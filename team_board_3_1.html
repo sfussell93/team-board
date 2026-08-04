@@ -243,6 +243,20 @@
     margin-top:1px;
   }
   .task-date.overdue{ color:var(--status-off); background:var(--status-off-bg); border-color:transparent; }
+  .task-recur-toggle{
+    font-size:12px; cursor:pointer; padding:3px 5px; border-radius:6px; color:#9fb0a4; flex-shrink:0;
+    margin-top:1px; line-height:1; border:1px solid transparent;
+  }
+  .task-recur-toggle:hover{ background:#eef4ef; color:#4c5c52; }
+  .task-recur-toggle.active{ color:var(--accent); }
+  .task-recur-label{
+    font-family:'JetBrains Mono',monospace; font-size:10.5px; color:var(--accent); background:var(--accent-dim);
+    border:1px solid transparent; border-radius:6px; padding:3px 6px; flex-shrink:0; margin-top:1px; cursor:pointer;
+    white-space:nowrap;
+  }
+  .person-task-recur{
+    font-family:'JetBrains Mono',monospace; font-size:10.5px; color:var(--accent);
+  }
 
   /* Risk list */
   .risk-list{ list-style:none; margin:0; padding:0; }
@@ -473,7 +487,7 @@ async function loadData(){
       if(!Array.isArray(t.tasks)){
         t.tasks = t.working ? [{ text: t.working, done: false, date: '' }] : [];
       }
-      t.tasks.forEach(task=>{ if(task.date === undefined) task.date = ''; });
+      t.tasks.forEach(task=>{ if(task.date === undefined) task.date = ''; if(task.recurring === undefined) task.recurring = false; });
     });
   });
   render();
@@ -752,7 +766,9 @@ function renderPeople(){
     const rows = people[name].map(a=>{
       const taskHtml = (a.tasks && a.tasks.length)
         ? a.tasks.map(task=>{
-            const dateLabel = task.date ? ` <span class="person-task-date">${fmtDate(task.date)}</span>` : '';
+            const dateLabel = task.recurring
+              ? ` <span class="person-task-recur">⟳ Repeats</span>`
+              : (task.date ? ` <span class="person-task-date">${fmtDate(task.date)}</span>` : '');
             return `<div class="person-task ${task.done?'done':''}">${task.done?'✓':'•'} ${escapeHtml(task.text)}${dateLabel}</div>`;
           }).join('')
         : `<div class="person-task muted">—</div>`;
@@ -965,21 +981,34 @@ function renderTaskList(t){
     li.innerHTML = `
       <input type="checkbox" class="task-check" ${task.done ? 'checked' : ''}>
       <span class="task-text${task.done ? ' done' : ''}" contenteditable="true" data-ph="What are they working on...">${escapeHtml(task.text)}</span>
-      <input type="date" class="task-date${isOverdue ? ' overdue' : ''}" value="${escapeHtml(task.date||'')}">
+      <span class="task-recur-toggle${task.recurring ? ' active' : ''}" title="${task.recurring ? 'Switch to one-off task' : 'Mark as recurring task'}">⟳</span>
+      ${task.recurring
+        ? `<span class="task-recur-label" title="Click to switch back to a one-off task">Repeats</span>`
+        : `<input type="date" class="task-date${isOverdue ? ' overdue' : ''}" value="${escapeHtml(task.date||'')}">`
+      }
       <span class="task-rm">×</span>
     `;
     li.querySelector('.task-check').addEventListener('change', e=>{
       task.done = e.target.checked;
       li.querySelector('.task-text').classList.toggle('done', task.done);
-      li.querySelector('.task-date').classList.toggle('overdue', !!task.date && !task.done && task.date < todayStr());
+      const dateEl = li.querySelector('.task-date');
+      if(dateEl) dateEl.classList.toggle('overdue', !!task.date && !task.done && task.date < todayStr());
       scheduleSave();
     });
     li.querySelector('.task-text').addEventListener('input', e=>{ task.text = e.target.textContent; scheduleSave(); });
-    li.querySelector('.task-date').addEventListener('change', e=>{
-      task.date = e.target.value;
-      e.target.classList.toggle('overdue', !!task.date && !task.done && task.date < todayStr());
-      scheduleSave();
-    });
+    const dateInput = li.querySelector('.task-date');
+    if(dateInput){
+      dateInput.addEventListener('change', e=>{
+        task.date = e.target.value;
+        e.target.classList.toggle('overdue', !!task.date && !task.done && task.date < todayStr());
+        scheduleSave();
+      });
+    }
+    const recurToggle = li.querySelector('.task-recur-toggle');
+    const flipRecurring = ()=>{ task.recurring = !task.recurring; render(); scheduleSave(); };
+    recurToggle.addEventListener('click', flipRecurring);
+    const recurLabel = li.querySelector('.task-recur-label');
+    if(recurLabel) recurLabel.addEventListener('click', flipRecurring);
     li.querySelector('.task-rm').onclick = ()=>{ t.tasks.splice(tIdx,1); render(); scheduleSave(); };
     ul.appendChild(li);
   });
@@ -987,7 +1016,7 @@ function renderTaskList(t){
   const add = document.createElement('div');
   add.className = 'task-add';
   add.textContent = '+ add task';
-  add.onclick = ()=>{ t.tasks.push({ text:'', done:false, date:'' }); render(); scheduleSave(); };
+  add.onclick = ()=>{ t.tasks.push({ text:'', done:false, date:'', recurring:false }); render(); scheduleSave(); };
   container.appendChild(add);
   return container;
 }
