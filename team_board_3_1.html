@@ -101,8 +101,23 @@
   .folder-btn:hover{ background: rgba(255,255,255,0.05); color:var(--text-hi); }
   .folder-btn.active{ background: rgba(255,255,255,0.07); color:var(--text-hi); }
   .folder-btn .fdot{ width:8px; height:8px; border-radius:3px; flex-shrink:0; }
-  .folder-btn .flabel{ flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .folder-btn .flabel{ flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; outline:none; }
+  .folder-btn .flabel[contenteditable="true"]{ overflow:visible; white-space:normal; cursor:text; }
   .folder-btn .fcount{ font-family:'JetBrains Mono',monospace; font-size:10.5px; color:var(--text-lo); }
+  .folder-edit-row{ display:flex; align-items:center; gap:10px; width:100%; padding:8px 10px; border-radius:8px; margin-bottom:2px; }
+  .folder-edit-row:hover{ background: rgba(255,255,255,0.05); }
+  .folder-edit-row .fdot{ width:8px; height:8px; border-radius:3px; flex-shrink:0; }
+  .folder-icon-btn{
+    opacity:0; flex-shrink:0; cursor:pointer; color:var(--text-lo); font-size:12px; padding:2px 4px; border-radius:4px;
+  }
+  .folder-edit-row:hover .folder-icon-btn{ opacity:1; }
+  .folder-icon-btn:hover{ color:var(--text-hi); background:rgba(255,255,255,0.08); }
+  .folder-icon-btn.del:hover{ color:#e37c7c; }
+  .add-folder-btn{
+    width:100%; text-align:left; background:none; border:none; color:var(--text-lo);
+    font-family:'Inter',sans-serif; font-size:12.5px; padding:7px 10px; border-radius:8px; cursor:pointer; margin-bottom:6px;
+  }
+  .add-folder-btn:hover{ background: rgba(255,255,255,0.05); color:var(--text-hi); }
 
   .tab-btn.has-folder{ border-left:3px solid transparent; padding-left:7px; }
 
@@ -142,9 +157,6 @@
     font-family:'JetBrains Mono',monospace; font-size:11.5px; font-weight:700; padding:6px 14px;
     border-radius:20px; text-transform:uppercase; letter-spacing:0.5px; cursor:pointer; border:none;
   }
-  .folder-toggle.caps{ background:var(--folder-caps-bg); color:var(--folder-caps); }
-  .folder-toggle.films{ background:var(--folder-films-bg); color:var(--folder-films); }
-  .folder-toggle.commercial{ background:var(--folder-commercial-bg); color:var(--folder-commercial); }
 
   .date-chip{
     display:flex; align-items:center; gap:6px; background:#fff; border:1px solid var(--line-soft);
@@ -190,9 +202,6 @@
   .p-flag.low{ background:var(--priority-low-bg); color:var(--priority-low); }
   .p-flag.medium{ background:var(--priority-medium-bg); color:var(--priority-medium); }
   .p-flag.high{ background:var(--priority-high-bg); color:var(--priority-high); }
-  .p-flag.caps{ background:var(--folder-caps-bg); color:var(--folder-caps); }
-  .p-flag.films{ background:var(--folder-films-bg); color:var(--folder-films); }
-  .p-flag.commercial{ background:var(--folder-commercial-bg); color:var(--folder-commercial); }
   .meta-sep{ color:#c3d0c8; }
 
   /* Section blocks on project pages */
@@ -372,6 +381,11 @@ let activeFolder = 'all';
 let saveTimer = null;
 
 const seed = {
+  folders: [
+    { id: 'caps', label: 'Caps' },
+    { id: 'films', label: 'Films' },
+    { id: 'commercial', label: 'Commercial' }
+  ],
   projects: [
     {
       id: 'p1',
@@ -429,9 +443,22 @@ const STATUS_LABELS = { on: 'On track', risk: 'At risk', off: 'Off track' };
 const STATUS_ORDER = ['on','risk','off'];
 const PRIORITY_LABELS = { low: 'Low priority', medium: 'Medium priority', high: 'High priority' };
 const PRIORITY_ORDER = ['low','medium','high'];
-const FOLDER_LABELS = { caps: 'Caps', films: 'Films', commercial: 'Commercial' };
-const FOLDER_ORDER = ['caps','films','commercial'];
-function folderColorVar(f){ return `var(--folder-${f})`; }
+const FOLDER_LABELS_LEGACY = { caps: 'Caps', films: 'Films', commercial: 'Commercial' };
+const FOLDER_PALETTE = ['#c9962e','#7a5cc0','#2f9e9e','#c0567a','#4f8a3d','#3d6fc0','#c07a3d','#3d9e7a','#9e3d6a','#6a7a3d','#c9962e','#5c6bc0'];
+function hexToRgba(hex, alpha){
+  const h = hex.replace('#','');
+  const r = parseInt(h.substring(0,2),16), g = parseInt(h.substring(2,4),16), b = parseInt(h.substring(4,6),16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+function folderColor(id){
+  const idx = data.folders.findIndex(f=>f.id===id);
+  return FOLDER_PALETTE[(idx>=0?idx:0) % FOLDER_PALETTE.length];
+}
+function folderColorBg(id){ return hexToRgba(folderColor(id), 0.14); }
+function folderLabel(id){
+  const f = data.folders.find(f=>f.id===id);
+  return f ? f.label : (FOLDER_LABELS_LEGACY[id] || id);
+}
 
 function uid(prefix){ return prefix + Math.random().toString(36).slice(2,8); }
 function initials(name){ return name.trim().split(/\s+/).map(w=>w[0]).join('').slice(0,2).toUpperCase(); }
@@ -477,11 +504,18 @@ async function loadData(){
     console.error('load failed', e);
     data = JSON.parse(JSON.stringify(seed));
   }
+  if(!Array.isArray(data.folders) || data.folders.length === 0){
+    data.folders = [
+      { id: 'caps', label: 'Caps' },
+      { id: 'films', label: 'Films' },
+      { id: 'commercial', label: 'Commercial' }
+    ];
+  }
   data.projects.forEach(p=>{
     if(!p.status) p.status = 'on';
     if(p.keyDate === undefined) p.keyDate = '';
     if(!p.priority) p.priority = 'medium';
-    if(!p.folder || !FOLDER_ORDER.includes(p.folder)) p.folder = 'caps';
+    if(!p.folder || !data.folders.some(f=>f.id===p.folder)) p.folder = data.folders[0].id;
     if(!Array.isArray(p.risks)) p.risks = [];
     p.team.forEach(t=>{
       if(!Array.isArray(t.tasks)){
@@ -620,10 +654,24 @@ function renderSidebar(){
   labelF.className = 'nav-group-label'; labelF.textContent = 'Folders';
   el.appendChild(labelF);
   el.appendChild(makeFolderBtn('all', 'All projects', null, data.projects.length));
-  FOLDER_ORDER.forEach(f=>{
-    const count = data.projects.filter(p=>p.folder===f).length;
-    el.appendChild(makeFolderBtn(f, FOLDER_LABELS[f], folderColorVar(f), count));
+  data.folders.forEach(f=>{
+    const count = data.projects.filter(p=>p.folder===f.id).length;
+    el.appendChild(makeFolderEditRow(f, count));
   });
+  const addFolderBtn = document.createElement('button');
+  addFolderBtn.className = 'add-folder-btn';
+  addFolderBtn.textContent = '+ Add folder';
+  addFolderBtn.onclick = ()=>{
+    const nf = { id: uid('f'), label: 'New folder' };
+    data.folders.push(nf);
+    render(); scheduleSave();
+    requestAnimationFrame(()=>{
+      const rows = document.querySelectorAll('.folder-edit-row .flabel');
+      const last = rows[rows.length-1];
+      if(last){ last.focus(); document.execCommand('selectAll', false, null); }
+    });
+  };
+  el.appendChild(addFolderBtn);
 
   const label2 = document.createElement('div');
   label2.className = 'nav-group-label'; label2.textContent = 'Projects';
@@ -644,7 +692,7 @@ function renderSidebar(){
   addBtn.className = 'add-project-btn';
   addBtn.textContent = '+ Add project';
   addBtn.onclick = ()=>{
-    const np = { id: uid('p'), name: 'New Project', summary: 'Click to describe this project.', status: 'on', keyDate: '', priority: 'medium', folder: 'caps', techGoals: [], commercialGoals: [], risks: [], team: [] };
+    const np = { id: uid('p'), name: 'New Project', summary: 'Click to describe this project.', status: 'on', keyDate: '', priority: 'medium', folder: data.folders[0].id, techGoals: [], commercialGoals: [], risks: [], team: [] };
     data.projects.push(np);
     activeTab = np.id;
     render(); scheduleSave();
@@ -668,12 +716,46 @@ function makeFolderBtn(id, label, colorVar, count){
   return btn;
 }
 
+function makeFolderEditRow(f, count){
+  const row = document.createElement('div');
+  row.className = 'folder-edit-row' + (activeFolder===f.id ? ' active' : '');
+  if(activeFolder===f.id) row.style.background = 'rgba(255,255,255,0.07)';
+  row.innerHTML = `
+    <span class="fdot" style="background:${folderColor(f.id)}"></span>
+    <span class="flabel" contenteditable="true" data-ph="Folder name" style="color:${activeFolder===f.id ? 'var(--text-hi)' : ''}">${escapeHtml(f.label)}</span>
+    <span class="fcount">${count}</span>
+    <span class="folder-icon-btn del" title="Delete folder">×</span>
+  `;
+  const labelEl = row.querySelector('.flabel');
+  labelEl.addEventListener('click', e=>{ e.stopPropagation(); });
+  labelEl.addEventListener('input', e=>{ f.label = e.target.textContent; scheduleSave(); });
+  labelEl.addEventListener('blur', e=>{
+    const clean = e.target.textContent.trim() || 'Untitled folder';
+    f.label = clean;
+    scheduleSave();
+    renderSidebarOnly();
+  });
+  labelEl.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); e.target.blur(); } });
+  row.querySelector('.folder-icon-btn.del').addEventListener('click', e=>{
+    e.stopPropagation();
+    if(data.folders.length <= 1){ alert("You need at least one folder."); return; }
+    if(!confirm(`Delete the "${f.label}" folder? Projects in it will move to "${data.folders.find(x=>x.id!==f.id).label}".`)) return;
+    const fallback = data.folders.find(x=>x.id!==f.id).id;
+    data.projects.forEach(p=>{ if(p.folder===f.id) p.folder = fallback; });
+    data.folders = data.folders.filter(x=>x.id!==f.id);
+    if(activeFolder===f.id) activeFolder = 'all';
+    render(); scheduleSave();
+  });
+  row.addEventListener('click', ()=>{ activeFolder = f.id; render(); });
+  return row;
+}
+
 function statusColorVar(s){ return s==='off' ? 'var(--status-off)' : s==='risk' ? 'var(--status-risk)' : 'var(--status-on)'; }
 
 function makeTabBtn(id, label, status, count, folder){
   const btn = document.createElement('button');
   btn.className = 'tab-btn' + (activeTab===id ? ' active' : '') + (folder ? ' has-folder' : '');
-  if(folder){ btn.style.borderLeftColor = folderColorVar(folder); }
+  if(folder){ btn.style.borderLeftColor = folderColor(folder); }
   const stripe = status ? `<span class="stripe" style="background:${statusColorVar(status)}"></span>` : '<span class="stripe" style="background:transparent"></span>';
   const countHtml = (count !== null && count !== undefined) ? `<span class="count">${count}</span>` : '';
   btn.innerHTML = `${stripe}<span class="label">${label}</span>${countHtml}`;
@@ -701,7 +783,7 @@ function renderMain(){
 
 function renderSummary(){
   const wrap = document.createElement('div');
-  const folderNote = activeFolder === 'all' ? '' : ` · ${FOLDER_LABELS[activeFolder]}`;
+  const folderNote = activeFolder === 'all' ? '' : ` · ${folderLabel(activeFolder)}`;
   wrap.innerHTML = `
     <div class="page-head">
       <div>
@@ -724,7 +806,7 @@ function renderSummary(){
       <div class="edge" style="background:${statusColorVar(p.status)}"></div>
       <h3>${escapeHtml(p.name)}</h3>
       <p class="desc">${escapeHtml(p.summary || '')}</p>
-      <div class="card-meta">${dateLine} <span class="meta-sep">·</span> <span class="p-flag ${p.priority}">${PRIORITY_LABELS[p.priority]}</span> <span class="p-flag ${p.folder}">${FOLDER_LABELS[p.folder]}</span></div>
+      <div class="card-meta">${dateLine} <span class="meta-sep">·</span> <span class="p-flag ${p.priority}">${PRIORITY_LABELS[p.priority]}</span> <span class="p-flag" style="background:${folderColorBg(p.folder)}; color:${folderColor(p.folder)}">${folderLabel(p.folder)}</span></div>
       <div class="row">
         <div class="avatars">${p.team.slice(0,5).map(t=>`<div class="avatar" style="background:${personColor(t.name)}" title="${escapeHtml(t.name)}">${initials(t.name)}</div>`).join('')}</div>
         <span class="badge ${p.status}">${STATUS_LABELS[p.status]}</span>
@@ -813,7 +895,7 @@ function renderProject(p){
       </div>
       <div class="status-block">
         <span class="status-block-label">Folder</span>
-        <button class="folder-toggle ${p.folder}">${FOLDER_LABELS[p.folder]}</button>
+        <button class="folder-toggle" style="background:${folderColorBg(p.folder)}; color:${folderColor(p.folder)}">${folderLabel(p.folder)}</button>
       </div>
       <div class="status-block">
         <span class="status-block-label">Next key date</span>
@@ -832,7 +914,8 @@ function renderProject(p){
     render(); scheduleSave();
   };
   head.querySelector('.folder-toggle').onclick = ()=>{
-    p.folder = FOLDER_ORDER[(FOLDER_ORDER.indexOf(p.folder)+1) % FOLDER_ORDER.length];
+    const idx = data.folders.findIndex(f=>f.id===p.folder);
+    p.folder = data.folders[(idx+1) % data.folders.length].id;
     render(); scheduleSave();
   };
   head.querySelector('.date-chip input').addEventListener('change', e=>{ p.keyDate = e.target.value; scheduleSave(); });
