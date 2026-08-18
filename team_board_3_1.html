@@ -132,6 +132,20 @@
     margin-left:auto; background:var(--accent); color:#0f1e16; border:none; font-family:'Inter',sans-serif;
     font-weight:600; font-size:12.5px; padding:8px 14px; border-radius:20px; cursor:pointer;
   }
+  .agenda-focus-picker{ display:flex; align-items:center; gap:6px; margin-bottom:24px; }
+  .agenda-focus-pill{
+    background:none; border:1px solid var(--line-soft); color:#5f7a68; font-family:'JetBrains Mono',monospace;
+    font-size:11px; text-transform:uppercase; letter-spacing:0.5px; padding:6px 12px; border-radius:16px; cursor:pointer;
+  }
+  .agenda-focus-pill.active{ background:var(--accent-dim); border-color:transparent; color:var(--accent); font-weight:600; }
+  .agenda-cross-box{
+    background:#f6f4ee; border:1px dashed var(--line-soft); border-radius:10px; padding:14px 16px; margin-bottom:28px;
+  }
+  .agenda-cross-title{
+    font-family:'JetBrains Mono',monospace; font-size:10.5px; text-transform:uppercase; letter-spacing:0.5px;
+    color:#8a7a4f; margin-bottom:8px;
+  }
+  .agenda-cross-box .agenda-item-row{ border-bottom-color:rgba(0,0,0,0.06); }
   .agenda-section{ margin-bottom:28px; }
   .agenda-section-title{
     font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:15px; color:var(--ink);
@@ -165,6 +179,26 @@
     border-radius:10px; padding:3px 9px;
   }
   .agenda-recur-tag{ color:var(--accent); }
+
+  /* ---------- Goals page ---------- */
+  .goals-page-list{ display:flex; flex-direction:column; }
+  .goals-page-row{
+    display:flex; align-items:center; gap:14px; padding:11px 4px; border-bottom:1px solid var(--line-soft);
+    cursor:pointer; font-size:13.5px;
+  }
+  .goals-page-row:hover{ background:#f6f4ee; }
+  .goals-page-date{
+    font-family:'JetBrains Mono',monospace; font-size:11.5px; color:#5f7a68; width:64px; flex-shrink:0;
+  }
+  .goals-page-date.overdue{ color:var(--status-off); font-weight:600; }
+  .goals-page-kind{
+    font-family:'JetBrains Mono',monospace; font-size:10px; text-transform:uppercase; letter-spacing:0.4px;
+    padding:3px 8px; border-radius:10px; flex-shrink:0; width:78px; text-align:center;
+  }
+  .goals-page-kind.tech{ background:var(--priority-medium-bg); color:var(--priority-medium); }
+  .goals-page-kind.commercial{ background:var(--status-on-bg); color:var(--status-on); }
+  .goals-page-text{ flex:1; color:#2b3c32; }
+  .goals-page-project{ font-size:12px; font-weight:600; flex-shrink:0; }
 
   .tab-btn.has-folder{ border-left:3px solid transparent; padding-left:7px; }
 
@@ -299,6 +333,11 @@
     margin-top:1px;
   }
   .task-date.overdue{ color:var(--status-off); background:var(--status-off-bg); border-color:transparent; }
+  .task-assignee{
+    font-family:'Inter',sans-serif; font-size:11.5px; color:#5f7a68; background:#fff; border:1px solid var(--line-soft);
+    border-radius:14px; padding:3px 8px; margin-top:1px; flex-shrink:0; max-width:110px; cursor:pointer; outline:none;
+  }
+  .task-assignee:hover{ border-color:#5f7a68; }
   .task-recur-toggle{
     font-size:12px; cursor:pointer; padding:3px 5px; border-radius:6px; color:#9fb0a4; flex-shrink:0;
     margin-top:1px; line-height:1; border:1px solid transparent;
@@ -391,12 +430,20 @@
   .login-error{
     color:var(--status-off); font-size:12px; font-family:'Inter',sans-serif; margin-top:10px; min-height:16px;
   }
+  .top-right-controls{
+    position:fixed; top:16px; right:16px; z-index:50; display:flex; align-items:center; gap:8px;
+  }
   .logout-btn{
-    position:fixed; top:16px; right:16px; z-index:50; background:none; border:1px solid var(--line-soft);
-    color:#5f7a68; font-family:'JetBrains Mono',monospace; font-size:11px; padding:6px 12px; border-radius:20px;
-    cursor:pointer;
+    background:none; border:1px solid var(--line-soft); color:#5f7a68; font-family:'JetBrains Mono',monospace;
+    font-size:11px; padding:6px 12px; border-radius:20px; cursor:pointer;
   }
   .logout-btn:hover{ border-color:#5f7a68; }
+  .undo-btn{
+    background:none; border:1px solid var(--line-soft); color:#5f7a68; font-family:'JetBrains Mono',monospace;
+    font-size:11px; padding:6px 12px; border-radius:20px; cursor:pointer;
+  }
+  .undo-btn:hover:not(:disabled){ border-color:var(--accent); color:var(--accent); }
+  .undo-btn:disabled{ opacity:0.4; cursor:default; }
 </style>
 </head>
 <body>
@@ -417,7 +464,10 @@
     </form>
   </div>
 </div>
-<button class="logout-btn" id="logoutBtn" style="display:none;">Log out</button>
+<div class="top-right-controls" id="topRightControls" style="display:none;">
+  <button class="undo-btn" id="undoBtn" title="Undo the last change" disabled>⤺ Undo</button>
+  <button class="logout-btn" id="logoutBtn">Log out</button>
+</div>
 <div class="app" id="app"></div>
 <div class="save-pill" id="savePill"><span class="accent-dot">●</span> saved</div>
 
@@ -426,6 +476,10 @@ let data = null;
 let activeTab = 'summary';
 let activeFolder = 'all';
 let activeAgendaFolder = null;
+let activeAgendaMeetingType = 'all'; // 'all' | 'tech' | 'commercial'
+let undoStack = []; // deep-cloned snapshots of data, oldest first — each one is "state before this batch of edits"
+const UNDO_LIMIT = 20;
+let lastSavedSnapshot = null; // deep clone of data as of the last successful save (local edit or remote sync)
 let saveTimer = null;
 
 const seed = {
@@ -592,6 +646,9 @@ async function loadData(){
     });
   });
   render();
+  lastSavedSnapshot = JSON.parse(JSON.stringify(data));
+  undoStack = [];
+  updateUndoButtonUI();
   subscribeToRemoteChanges();
 }
 
@@ -601,12 +658,38 @@ async function persist(){
   try{
     const { error } = await sb.from('boards').update({ data, updated_at: new Date().toISOString() }).eq('id', BOARD_ROW_ID);
     if(error) throw error;
+    lastSavedSnapshot = JSON.parse(JSON.stringify(data)); // new checkpoint now that this batch of edits is saved
     pill.classList.add('show');
     clearTimeout(saveTimer);
     saveTimer = setTimeout(()=> pill.classList.remove('show'), 1200);
   }catch(e){ console.error('save failed', e); }
 }
-function scheduleSave(){ clearTimeout(scheduleSave._t); scheduleSave._t = setTimeout(persist, 500); }
+function scheduleSave(){
+  if(!scheduleSave._t && lastSavedSnapshot){
+    // first edit of a new burst — snapshot the pre-edit state so it can be undone
+    undoStack.push(lastSavedSnapshot);
+    if(undoStack.length > UNDO_LIMIT) undoStack.shift();
+    updateUndoButtonUI();
+  }
+  clearTimeout(scheduleSave._t);
+  scheduleSave._t = setTimeout(()=>{ scheduleSave._t = null; persist(); }, 500);
+}
+
+function updateUndoButtonUI(){
+  const btn = document.getElementById('undoBtn');
+  if(!btn) return;
+  btn.disabled = undoStack.length === 0;
+  btn.textContent = undoStack.length ? `⤺ Undo (${undoStack.length})` : '⤺ Undo';
+}
+
+function doUndo(){
+  if(undoStack.length === 0) return;
+  clearTimeout(scheduleSave._t); scheduleSave._t = null; // cancel any pending debounced save
+  data = undoStack.pop();
+  updateUndoButtonUI();
+  render();
+  persist(); // save the reverted state immediately so it syncs to everyone
+}
 
 // Live sync: when a teammate saves, pull their change in and re-render.
 let remoteChannel = null;
@@ -616,6 +699,9 @@ function subscribeToRemoteChanges(){
     .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'boards', filter: `id=eq.${BOARD_ROW_ID}` }, payload => {
       applyingRemoteUpdate = true;
       data = payload.new.data;
+      lastSavedSnapshot = JSON.parse(JSON.stringify(data));
+      undoStack = []; // a teammate's change landed — local undo history no longer applies cleanly, so reset it
+      updateUndoButtonUI();
       render();
       applyingRemoteUpdate = false;
     })
@@ -637,16 +723,19 @@ async function initAuth(){
 
 function showLogin(){
   document.getElementById('loginScreen').style.display = 'flex';
-  document.getElementById('logoutBtn').style.display = 'none';
+  document.getElementById('topRightControls').style.display = 'none';
   document.getElementById('app').style.display = 'none';
 }
 
 function showApp(){
   document.getElementById('loginScreen').style.display = 'none';
-  document.getElementById('logoutBtn').style.display = 'block';
+  document.getElementById('topRightControls').style.display = 'flex';
   document.getElementById('app').style.display = 'flex';
   loadData();
 }
+
+document.getElementById('undoBtn').addEventListener('click', doUndo);
+
 
 document.getElementById('loginForm').addEventListener('submit', async e=>{
   e.preventDefault();
@@ -715,6 +804,7 @@ function renderSidebar(){
   label1.className = 'nav-group-label'; label1.textContent = 'Overview';
   el.appendChild(label1);
   el.appendChild(makeTabBtn('summary', 'Summary', null, null, null));
+  el.appendChild(makeTabBtn('goals', 'Goals', null, null, null));
   el.appendChild(makeTabBtn('people', 'Team members', null, null, null));
   el.appendChild(makeTabBtn('agenda', 'Meeting agenda', null, null, null));
 
@@ -838,6 +928,7 @@ function renderMain(){
   inner.className = 'main-inner';
 
   if(activeTab === 'summary') inner.appendChild(renderSummary());
+  else if(activeTab === 'goals') inner.appendChild(renderGoalsPage());
   else if(activeTab === 'people') inner.appendChild(renderPeople());
   else if(activeTab === 'agenda') inner.appendChild(renderAgenda());
   else {
@@ -893,6 +984,60 @@ function renderSummary(){
   }
 
   wrap.appendChild(grid);
+  return wrap;
+}
+
+function renderGoalsPage(){
+  const wrap = document.createElement('div');
+  const folderNote = activeFolder === 'all' ? '' : ` · ${folderLabel(activeFolder)}`;
+  wrap.innerHTML = `
+    <div class="page-head">
+      <div>
+        <div class="page-eyebrow">Overview${folderNote}</div>
+        <h1 class="page-title">All goals, by date</h1>
+        <div class="page-sub">Every tech and commercial goal across ${activeFolder === 'all' ? 'all projects' : 'this folder'}, soonest first. Click a goal to open its project.</div>
+      </div>
+    </div>
+  `;
+
+  const projects = activeFolder === 'all' ? data.projects : data.projects.filter(p=>p.folder===activeFolder);
+  const goals = [];
+  projects.forEach(p=>{
+    (p.techGoals||[]).forEach(g=> goals.push({ project:p, kind:'tech', text:g.text, date:g.date }));
+    (p.commercialGoals||[]).forEach(g=> goals.push({ project:p, kind:'commercial', text:g.text, date:g.date }));
+  });
+  goals.sort((a,b)=>{
+    const da = a.date || '9999-12-31', db = b.date || '9999-12-31';
+    if(da !== db) return da < db ? -1 : 1;
+    return (a.text||'').localeCompare(b.text||'');
+  });
+
+  const list = document.createElement('div');
+  list.className = 'goals-page-list';
+  goals.forEach(g=>{
+    const row = document.createElement('div');
+    row.className = 'goals-page-row';
+    const overdue = g.date && g.date < todayStr();
+    row.innerHTML = `
+      <span class="goals-page-date${overdue ? ' overdue' : ''}">${g.date ? fmtDate(g.date) : 'No date'}</span>
+      <span class="goals-page-kind ${g.kind}">${g.kind === 'tech' ? 'Tech' : 'Commercial'}</span>
+      <span class="goals-page-text">${escapeHtml(g.text || 'Untitled goal')}</span>
+      <span class="goals-page-project" style="color:${folderColor(g.project.folder)}">${escapeHtml(g.project.name)}</span>
+    `;
+    row.onclick = ()=>{ activeTab = g.project.id; render(); };
+    list.appendChild(row);
+  });
+
+  if(goals.length === 0){
+    const empty = document.createElement('div');
+    empty.className = 'page-sub';
+    empty.style.marginTop = '16px';
+    empty.textContent = 'No goals logged yet. Add tech or commercial goals from within a project.';
+    wrap.appendChild(empty);
+  } else {
+    wrap.appendChild(list);
+  }
+
   return wrap;
 }
 
@@ -971,13 +1116,13 @@ function buildAgendaForFolder(folderId){
   const capacity = {};
 
   projects.forEach(p=>{
-    if(p.keyDate && p.keyDate >= today) keyDates.push({ projectName:p.name, label:'Key date', date:p.keyDate });
-    [['Tech goal', p.techGoals], ['Commercial goal', p.commercialGoals]].forEach(([kindLabel, list])=>{
+    if(p.keyDate && p.keyDate >= today) keyDates.push({ projectName:p.name, label:'Key date', date:p.keyDate, kind:null });
+    [['Tech goal', p.techGoals, 'tech'], ['Commercial goal', p.commercialGoals, 'commercial']].forEach(([kindLabel, list, kind])=>{
       (list||[]).forEach(g=>{
         if(!g.date) return;
         const label = `${kindLabel}: ${g.text || 'Untitled'}`;
-        if(g.date >= today) keyDates.push({ projectName:p.name, label, date:g.date });
-        if(isWithinNextDays(g.date, 14)) upcoming.push({ projectName:p.name, label, date:g.date });
+        if(g.date >= today) keyDates.push({ projectName:p.name, label, date:g.date, kind });
+        if(isWithinNextDays(g.date, 14)) upcoming.push({ projectName:p.name, label, date:g.date, kind });
       });
     });
     p.team.forEach(t=>{
@@ -991,7 +1136,7 @@ function buildAgendaForFolder(folderId){
             capacity[t.name].overdue++;
             overdue.push({ projectName:p.name, person:t.name, text:task.text, date:task.date, days: daysBetween(task.date, today) });
           } else if(isWithinNextDays(task.date, 14)){
-            upcoming.push({ projectName:p.name, person:t.name, label:task.text || 'Untitled task', date:task.date });
+            upcoming.push({ projectName:p.name, person:t.name, label:task.text || 'Untitled task', date:task.date, kind:'task' });
           }
         } else if(isWithinLastDays(task.completedAt, 14)){
           completed.push({ projectName:p.name, person:t.name, text:task.text, date:task.completedAt });
@@ -1028,9 +1173,13 @@ function renderAgendaSection(title, items, itemHtmlFn, emptyText){
   return sec;
 }
 
-function copyAgendaText(folder, agenda, btn){
+function meetingLabel(kind){
+  return kind === 'tech' ? 'Tech meeting' : kind === 'commercial' ? 'Commercial meeting' : 'All';
+}
+
+function copyAgendaText(folder, agenda, focusLabel, btn){
   const lines = [];
-  lines.push(`MEETING AGENDA — ${folder.label} team`);
+  lines.push(`MEETING AGENDA — ${folder.label} team (${focusLabel})`);
   lines.push(`Generated ${fmtDate(todayStr())}`);
   lines.push('');
   lines.push('PROJECTS (ranked by priority, next date, open tasks)');
@@ -1043,8 +1192,9 @@ function copyAgendaText(folder, agenda, btn){
   agenda.completed.forEach(i=> lines.push(`- ${i.person} — ${i.text || 'Untitled task'} (${i.projectName}, ${fmtDate(i.date)})`));
   lines.push('');
   lines.push('COMING UP IN THE NEXT 2 WEEKS');
-  if(agenda.upcoming.length===0) lines.push('- None');
-  agenda.upcoming.forEach(i=> lines.push(`- ${i.person ? i.person+' — ' : ''}${i.label || 'Untitled'} (${i.projectName}, ${fmtDate(i.date)})`));
+  const upcomingForCopy = focusLabel === 'All' ? agenda.upcoming : agenda.upcoming.filter(i=> i.kind==='task' || meetingLabel(i.kind) === focusLabel);
+  if(upcomingForCopy.length===0) lines.push('- None');
+  upcomingForCopy.forEach(i=> lines.push(`- ${i.person ? i.person+' — ' : ''}${i.label || 'Untitled'} (${i.projectName}, ${fmtDate(i.date)})`));
   lines.push('');
   lines.push('OPEN TASKS THAT ARE OVERDUE');
   if(agenda.overdue.length===0) lines.push('- None');
@@ -1106,9 +1256,20 @@ function renderAgenda(){
   const copyBtn = document.createElement('button');
   copyBtn.className = 'agenda-copy-btn';
   copyBtn.textContent = 'Copy for meeting notes';
-  copyBtn.onclick = ()=> copyAgendaText(folder, agenda, copyBtn);
+  copyBtn.onclick = ()=> copyAgendaText(folder, agenda, meetingLabel(activeAgendaMeetingType), copyBtn);
   picker.appendChild(copyBtn);
   wrap.appendChild(picker);
+
+  const focusPicker = document.createElement('div');
+  focusPicker.className = 'agenda-focus-picker';
+  [['all','All'],['tech','Tech meeting'],['commercial','Commercial meeting']].forEach(([val,label])=>{
+    const pill = document.createElement('button');
+    pill.className = 'agenda-focus-pill' + (activeAgendaMeetingType===val ? ' active' : '');
+    pill.textContent = label;
+    pill.onclick = ()=>{ activeAgendaMeetingType = val; render(); };
+    focusPicker.appendChild(pill);
+  });
+  wrap.appendChild(focusPicker);
 
   if(agenda.projects.length === 0){
     const empty = document.createElement('div');
@@ -1118,6 +1279,12 @@ function renderAgenda(){
     wrap.appendChild(empty);
     return wrap;
   }
+
+  const focus = activeAgendaMeetingType;
+  const otherFocus = focus === 'tech' ? 'commercial' : focus === 'commercial' ? 'tech' : null;
+  const upcomingShown = focus === 'all' ? agenda.upcoming : agenda.upcoming.filter(i=> i.kind==='task' || i.kind===focus);
+  const keyDatesShown = focus === 'all' ? agenda.keyDates : agenda.keyDates.filter(i=> !i.kind || i.kind===focus);
+  const crossContext = otherFocus ? agenda.upcoming.filter(i=> i.kind===otherFocus) : [];
 
   const rankSec = document.createElement('div');
   rankSec.className = 'agenda-section';
@@ -1145,10 +1312,26 @@ function renderAgenda(){
     'Nothing marked complete in the last two weeks yet.'
   ));
 
-  wrap.appendChild(renderAgendaSection('Coming up in the next 2 weeks', agenda.upcoming, item=>
+  wrap.appendChild(renderAgendaSection('Coming up in the next 2 weeks', upcomingShown, item=>
     `<span class="agenda-item-main">${item.person ? escapeHtml(item.person)+' — ' : ''}${escapeHtml(item.label || 'Untitled')}</span><span class="agenda-item-meta">${escapeHtml(item.projectName)} · ${fmtDate(item.date)}</span>`,
     'Nothing scheduled in the next two weeks.'
   ));
+
+  if(otherFocus && crossContext.length > 0){
+    const cross = document.createElement('div');
+    cross.className = 'agenda-cross-box';
+    cross.innerHTML = `<div class="agenda-cross-title">Also on the ${meetingLabel(otherFocus)} radar — for alignment</div>`;
+    const list = document.createElement('div');
+    list.className = 'agenda-item-list';
+    crossContext.forEach(item=>{
+      const row = document.createElement('div');
+      row.className = 'agenda-item-row';
+      row.innerHTML = `<span class="agenda-item-main">${escapeHtml(item.label || 'Untitled')}</span><span class="agenda-item-meta">${escapeHtml(item.projectName)} · ${fmtDate(item.date)}</span>`;
+      list.appendChild(row);
+    });
+    cross.appendChild(list);
+    wrap.appendChild(cross);
+  }
 
   wrap.appendChild(renderAgendaSection('Open tasks that are overdue', agenda.overdue, item=>
     `<span class="agenda-item-main">${escapeHtml(item.person)} — ${escapeHtml(item.text || 'Untitled task')}</span><span class="agenda-item-meta agenda-overdue-tag">${escapeHtml(item.projectName)} · ${item.days} day${item.days===1?'':'s'} overdue</span>`,
@@ -1181,7 +1364,7 @@ function renderAgenda(){
   }
   wrap.appendChild(capSec);
 
-  wrap.appendChild(renderAgendaSection('Key dates coming up', agenda.keyDates, item=>
+  wrap.appendChild(renderAgendaSection('Key dates coming up', keyDatesShown, item=>
     `<span class="agenda-item-main">${escapeHtml(item.label)}</span><span class="agenda-item-meta">${escapeHtml(item.projectName)} · ${fmtDate(item.date)}</span>`,
     'No upcoming key dates logged.'
   ));
@@ -1356,7 +1539,7 @@ function renderTeamSection(p){
       scheduleSave(); renderSidebarOnly();
     });
     row.querySelector('.team-role').addEventListener('input', e=>{ t.role = e.target.textContent; scheduleSave(); });
-    row.querySelector('.team-working').appendChild(renderTaskList(t));
+    row.querySelector('.team-working').appendChild(renderTaskList(t, p, idx));
     row.querySelector('.rm-btn').onclick = ()=>{ p.team.splice(idx,1); render(); scheduleSave(); };
     sec.appendChild(row);
   });
@@ -1368,7 +1551,7 @@ function renderTeamSection(p){
   return sec;
 }
 
-function renderTaskList(t){
+function renderTaskList(t, p, selfIdx){
   const container = document.createElement('div');
   const ul = document.createElement('ul');
   ul.className = 'task-list';
@@ -1376,9 +1559,15 @@ function renderTaskList(t){
     const li = document.createElement('li');
     li.className = 'task-row';
     const isOverdue = task.date && !task.done && task.date < todayStr();
+    const assigneeSelect = (p && p.team.length > 1)
+      ? `<select class="task-assignee" title="Reassign this task to someone else">${p.team.map((member,mIdx)=>
+          `<option value="${mIdx}" ${mIdx===selfIdx ? 'selected' : ''}>${escapeHtml(member.name || 'Unnamed')}</option>`
+        ).join('')}</select>`
+      : '';
     li.innerHTML = `
       <input type="checkbox" class="task-check" ${task.done ? 'checked' : ''}>
       <span class="task-text${task.done ? ' done' : ''}" contenteditable="true" data-ph="What are they working on...">${escapeHtml(task.text)}</span>
+      ${assigneeSelect}
       <span class="task-recur-toggle${task.recurring ? ' active' : ''}" title="${task.recurring ? 'Switch to one-off task' : 'Mark as recurring task'}">⟳</span>
       ${task.recurring
         ? `<span class="task-recur-label" title="Click to switch back to a one-off task">Repeats</span>`
@@ -1401,6 +1590,17 @@ function renderTaskList(t){
         task.date = e.target.value;
         e.target.classList.toggle('overdue', !!task.date && !task.done && task.date < todayStr());
         scheduleSave();
+      });
+    }
+    const assigneeEl = li.querySelector('.task-assignee');
+    if(assigneeEl){
+      assigneeEl.addEventListener('change', e=>{
+        const targetIdx = parseInt(e.target.value, 10);
+        if(targetIdx === selfIdx) return;
+        const [moved] = t.tasks.splice(tIdx, 1);
+        if(!Array.isArray(p.team[targetIdx].tasks)) p.team[targetIdx].tasks = [];
+        p.team[targetIdx].tasks.push(moved);
+        render(); scheduleSave();
       });
     }
     const recurToggle = li.querySelector('.task-recur-toggle');
