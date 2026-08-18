@@ -104,18 +104,31 @@
   .folder-btn .flabel{ flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; outline:none; }
   .folder-btn .flabel[contenteditable="true"]{ overflow:visible; white-space:normal; cursor:text; }
   .folder-btn .fcount{ font-family:'JetBrains Mono',monospace; font-size:10.5px; color:var(--text-lo); }
-  .folder-edit-row{ display:flex; align-items:center; gap:10px; width:100%; padding:8px 10px; border-radius:8px; margin-bottom:2px; }
+  .folder-edit-row{ display:flex; align-items:center; gap:10px; width:100%; padding:7px 10px 7px 22px; border-radius:8px; margin-bottom:1px; }
   .folder-edit-row:hover{ background: rgba(255,255,255,0.05); }
-  .folder-edit-row .fdot{ width:8px; height:8px; border-radius:3px; flex-shrink:0; }
+  .folder-edit-row .fdot{ width:7px; height:7px; border-radius:50%; flex-shrink:0; }
+  .topic-edit-row{
+    display:flex; align-items:center; gap:10px; width:100%; padding:8px 10px; border-radius:8px; margin-top:8px;
+    margin-bottom:2px; cursor:pointer; font-weight:600;
+  }
+  .topic-edit-row:first-of-type{ margin-top:0; }
+  .topic-edit-row:hover{ background: rgba(255,255,255,0.05); }
+  .topic-edit-row.active{ background: rgba(255,255,255,0.07); }
+  .topic-edit-row .fdot{ width:9px; height:9px; border-radius:3px; flex-shrink:0; }
+  .add-subfolder-btn{
+    width:100%; text-align:left; background:none; border:none; color:var(--text-lo);
+    font-family:'Inter',sans-serif; font-size:11.5px; padding:5px 10px 5px 22px; border-radius:8px; cursor:pointer; margin-bottom:4px;
+  }
+  .add-subfolder-btn:hover{ background: rgba(255,255,255,0.05); color:var(--text-hi); }
   .folder-icon-btn{
     opacity:0; flex-shrink:0; cursor:pointer; color:var(--text-lo); font-size:12px; padding:2px 4px; border-radius:4px;
   }
-  .folder-edit-row:hover .folder-icon-btn{ opacity:1; }
+  .folder-edit-row:hover .folder-icon-btn, .topic-edit-row:hover .folder-icon-btn{ opacity:1; }
   .folder-icon-btn:hover{ color:var(--text-hi); background:rgba(255,255,255,0.08); }
   .folder-icon-btn.del:hover{ color:#e37c7c; }
   .add-folder-btn{
     width:100%; text-align:left; background:none; border:none; color:var(--text-lo);
-    font-family:'Inter',sans-serif; font-size:12.5px; padding:7px 10px; border-radius:8px; cursor:pointer; margin-bottom:6px;
+    font-family:'Inter',sans-serif; font-size:12.5px; padding:7px 10px; border-radius:8px; cursor:pointer; margin-bottom:6px; margin-top:6px;
   }
   .add-folder-btn:hover{ background: rgba(255,255,255,0.05); color:var(--text-hi); }
 
@@ -352,6 +365,10 @@
   /* Section blocks on project pages */
   .section{ background:#fff; border:1px solid var(--line-soft); border-radius:10px; padding:20px 22px; margin-bottom:16px;}
   .section-head{ display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;}
+  .shared-badge{
+    font-family:'JetBrains Mono',monospace; font-size:10px; text-transform:uppercase; letter-spacing:0.4px;
+    color:#8a7a4f; background:#f6f0e0; border-radius:10px; padding:3px 9px;
+  }
   .section-title{ font-family:'Space Grotesk',sans-serif; font-size:13px; font-weight:600; text-transform:uppercase; letter-spacing:0.6px; color:#2b3c32; display:flex; align-items:center; gap:8px;}
   .section-title .ico{ width:7px; height:7px; border-radius:2px; background:var(--accent); display:inline-block;}
   .two-col{ display:grid; grid-template-columns:1fr 1fr; gap:16px; }
@@ -547,10 +564,27 @@ let lastSavedSnapshot = null; // deep clone of data as of the last successful sa
 let saveTimer = null;
 
 const seed = {
+  topics: [
+    { id: 'topic_caps', label: 'Caps', techGoals: [
+      { text: 'Migrate to event-driven architecture', date: '' },
+      { text: 'Cut p95 latency below 200ms', date: '' }
+    ], commercialGoals: [
+      { text: 'Unblock enterprise tier launch', date: '' },
+      { text: 'Reduce infra cost by 15%', date: '' }
+    ] },
+    { id: 'topic_films', label: 'Films', techGoals: [
+      { text: 'Ship modular onboarding widget', date: '' },
+      { text: 'Add analytics instrumentation', date: '' }
+    ], commercialGoals: [
+      { text: 'Lift activation rate 10%', date: '' },
+      { text: 'Reduce support tickets on setup', date: '' }
+    ] }
+  ],
   folders: [
-    { id: 'caps', label: 'Caps' },
-    { id: 'films', label: 'Films' },
-    { id: 'commercial', label: 'Commercial' }
+    { id: 'caps_tech', label: 'Tech', topicId: 'topic_caps' },
+    { id: 'caps_comm', label: 'Commercial', topicId: 'topic_caps' },
+    { id: 'films_tech', label: 'Tech', topicId: 'topic_films' },
+    { id: 'films_comm', label: 'Commercial', topicId: 'topic_films' }
   ],
   projects: [
     {
@@ -560,15 +594,7 @@ const seed = {
       status: 'on',
       keyDate: '',
       priority: 'high',
-      folder: 'commercial',
-      techGoals: [
-        { text: 'Migrate to event-driven architecture', date: '' },
-        { text: 'Cut p95 latency below 200ms', date: '' }
-      ],
-      commercialGoals: [
-        { text: 'Unblock enterprise tier launch', date: '' },
-        { text: 'Reduce infra cost by 15%', date: '' }
-      ],
+      folder: 'caps_comm',
       risks: [
         { text: 'Event bus migration could slip past the enterprise launch date', severity: 'high' },
         { text: 'Limited backend coverage if Priya is pulled onto Nova', severity: 'med' }
@@ -585,15 +611,7 @@ const seed = {
       status: 'risk',
       keyDate: '',
       priority: 'medium',
-      folder: 'films',
-      techGoals: [
-        { text: 'Ship modular onboarding widget', date: '' },
-        { text: 'Add analytics instrumentation', date: '' }
-      ],
-      commercialGoals: [
-        { text: 'Lift activation rate 10%', date: '' },
-        { text: 'Reduce support tickets on setup', date: '' }
-      ],
+      folder: 'films_tech',
       risks: [
         { text: 'Design bandwidth shared with another project this month', severity: 'low' }
       ],
@@ -616,14 +634,38 @@ function hexToRgba(hex, alpha){
   const r = parseInt(h.substring(0,2),16), g = parseInt(h.substring(2,4),16), b = parseInt(h.substring(4,6),16);
   return `rgba(${r},${g},${b},${alpha})`;
 }
-function folderColor(id){
-  const idx = data.folders.findIndex(f=>f.id===id);
+function colorForId(list, id){
+  const idx = list.findIndex(x=>x.id===id);
   return FOLDER_PALETTE[(idx>=0?idx:0) % FOLDER_PALETTE.length];
 }
+function folderColor(id){ return colorForId(data.folders, id); }
 function folderColorBg(id){ return hexToRgba(folderColor(id), 0.14); }
 function folderLabel(id){
   const f = data.folders.find(f=>f.id===id);
   return f ? f.label : (FOLDER_LABELS_LEGACY[id] || id);
+}
+function topicColor(id){ return colorForId(data.topics, id); }
+function topicColorBg(id){ return hexToRgba(topicColor(id), 0.14); }
+function topicLabel(id){
+  const t = data.topics.find(t=>t.id===id);
+  return t ? t.label : id;
+}
+function topicForFolder(folderId){
+  const f = data.folders.find(f=>f.id===folderId);
+  if(!f) return null;
+  return data.topics.find(t=>t.id===f.topicId) || null;
+}
+function topicForProject(p){ return topicForFolder(p.folder); }
+// Resolve the current sidebar selection (activeFolder) into the list of projects it should show.
+// activeFolder can be: 'all', 'topic:<id>' (every subfolder under that topic), or a plain subfolder id.
+function projectsForActiveFilter(){
+  if(activeFolder === 'all') return data.projects;
+  if(typeof activeFolder === 'string' && activeFolder.startsWith('topic:')){
+    const topicId = activeFolder.slice(6);
+    const folderIds = data.folders.filter(f=>f.topicId===topicId).map(f=>f.id);
+    return data.projects.filter(p=>folderIds.includes(p.folder));
+  }
+  return data.projects.filter(p=>p.folder===activeFolder);
 }
 
 function uid(prefix){ return prefix + Math.random().toString(36).slice(2,8); }
@@ -696,6 +738,46 @@ async function loadData(){
       { id: 'commercial', label: 'Commercial' }
     ];
   }
+  let justMigratedTopics = false;
+  if(!Array.isArray(data.topics)){
+    justMigratedTopics = true;
+    // First time seeing this data shape: build topics from existing folder names,
+    // and merge each project's own goals into its topic's shared goal list (by text, deduped).
+    data.topics = [];
+    const topicKeyToId = {};
+    data.folders.forEach(f=>{
+      const lower = (f.label || '').toLowerCase();
+      const key = lower.includes('film') ? 'films' : (lower.includes('cap') || lower.includes('coat')) ? 'caps' : 'general';
+      if(!topicKeyToId[key]){
+        const label = key === 'films' ? 'Films' : key === 'caps' ? 'Caps' : 'General';
+        const t = { id: uid('topic'), label, techGoals: [], commercialGoals: [] };
+        data.topics.push(t);
+        topicKeyToId[key] = t.id;
+      }
+      f.topicId = topicKeyToId[key];
+    });
+    if(data.topics.length === 0){
+      const t = { id: uid('topic'), label: 'General', techGoals: [], commercialGoals: [] };
+      data.topics.push(t);
+    }
+    data.projects.forEach(p=>{
+      const folder = data.folders.find(f=>f.id===p.folder);
+      const topic = folder ? data.topics.find(t=>t.id===folder.topicId) : data.topics[0];
+      if(!topic) return;
+      (p.techGoals||[]).forEach(g=>{
+        if(g.text && !topic.techGoals.some(x=>x.text===g.text)) topic.techGoals.push({ text: g.text, date: g.date || '' });
+      });
+      (p.commercialGoals||[]).forEach(g=>{
+        if(g.text && !topic.commercialGoals.some(x=>x.text===g.text)) topic.commercialGoals.push({ text: g.text, date: g.date || '' });
+      });
+    });
+  }
+  // Make sure every folder points at a real topic (covers folders added after migration too)
+  data.folders.forEach(f=>{
+    if(!f.topicId || !data.topics.some(t=>t.id===f.topicId)){
+      f.topicId = data.topics[0].id;
+    }
+  });
   data.projects.forEach(p=>{
     if(!p.status) p.status = 'on';
     if(p.keyDate === undefined) p.keyDate = '';
@@ -714,6 +796,11 @@ async function loadData(){
   undoStack = [];
   updateUndoButtonUI();
   subscribeToRemoteChanges();
+  if(justMigratedTopics){
+    // Lock in this migration immediately so a teammate opening the app moments later
+    // loads the already-migrated version instead of independently re-migrating their own copy.
+    persist();
+  }
 }
 
 async function persist(){
@@ -877,30 +964,52 @@ function renderSidebar(){
   labelF.className = 'nav-group-label'; labelF.textContent = 'Filters';
   el.appendChild(labelF);
   el.appendChild(makeFolderBtn('all', 'All projects', null, data.projects.length));
-  data.folders.forEach(f=>{
-    const count = data.projects.filter(p=>p.folder===f.id).length;
-    el.appendChild(makeFolderEditRow(f, count));
+
+  data.topics.forEach(topic=>{
+    const topicFolderIds = data.folders.filter(f=>f.topicId===topic.id).map(f=>f.id);
+    const topicCount = data.projects.filter(p=>topicFolderIds.includes(p.folder)).length;
+    el.appendChild(makeTopicEditRow(topic, topicCount));
+    data.folders.filter(f=>f.topicId===topic.id).forEach(f=>{
+      const count = data.projects.filter(p=>p.folder===f.id).length;
+      el.appendChild(makeFolderEditRow(f, count));
+    });
+    const addSub = document.createElement('button');
+    addSub.className = 'add-subfolder-btn';
+    addSub.textContent = '+ Add subfolder';
+    addSub.onclick = ()=>{
+      const nf = { id: uid('f'), label: 'New subfolder', topicId: topic.id };
+      data.folders.push(nf);
+      render(); scheduleSave();
+      requestAnimationFrame(()=>{
+        const rows = document.querySelectorAll('.folder-edit-row .flabel');
+        const last = rows[rows.length-1];
+        if(last){ last.focus(); document.execCommand('selectAll', false, null); }
+      });
+    };
+    el.appendChild(addSub);
   });
-  const addFolderBtn = document.createElement('button');
-  addFolderBtn.className = 'add-folder-btn';
-  addFolderBtn.textContent = '+ Add filter';
-  addFolderBtn.onclick = ()=>{
-    const nf = { id: uid('f'), label: 'New folder' };
-    data.folders.push(nf);
+
+  const addTopicBtn = document.createElement('button');
+  addTopicBtn.className = 'add-folder-btn';
+  addTopicBtn.textContent = '+ Add topic';
+  addTopicBtn.onclick = ()=>{
+    const nt = { id: uid('topic'), label: 'New topic', techGoals: [], commercialGoals: [] };
+    data.topics.push(nt);
+    data.folders.push({ id: uid('f'), label: 'General', topicId: nt.id });
     render(); scheduleSave();
     requestAnimationFrame(()=>{
-      const rows = document.querySelectorAll('.folder-edit-row .flabel');
+      const rows = document.querySelectorAll('.topic-edit-row .flabel');
       const last = rows[rows.length-1];
       if(last){ last.focus(); document.execCommand('selectAll', false, null); }
     });
   };
-  el.appendChild(addFolderBtn);
+  el.appendChild(addTopicBtn);
 
   const label2 = document.createElement('div');
   label2.className = 'nav-group-label'; label2.textContent = 'Projects';
   el.appendChild(label2);
 
-  const visibleProjects = activeFolder === 'all' ? data.projects : data.projects.filter(p=>p.folder===activeFolder);
+  const visibleProjects = projectsForActiveFilter();
   if(visibleProjects.length === 0){
     const empty = document.createElement('div');
     empty.style.cssText = 'font-size:12px; color:var(--text-lo); padding:6px 10px 4px;';
@@ -915,7 +1024,17 @@ function renderSidebar(){
   addBtn.className = 'add-project-btn';
   addBtn.textContent = '+ Add project';
   addBtn.onclick = ()=>{
-    const np = { id: uid('p'), name: 'New Project', summary: 'Click to describe this project.', status: 'on', keyDate: '', priority: 'medium', folder: data.folders[0].id, techGoals: [], commercialGoals: [], risks: [], team: [] };
+    let defaultFolder = data.folders[0].id;
+    if(activeFolder !== 'all'){
+      if(typeof activeFolder === 'string' && activeFolder.startsWith('topic:')){
+        const topicId = activeFolder.slice(6);
+        const match = data.folders.find(f=>f.topicId===topicId);
+        if(match) defaultFolder = match.id;
+      } else if(data.folders.some(f=>f.id===activeFolder)){
+        defaultFolder = activeFolder;
+      }
+    }
+    const np = { id: uid('p'), name: 'New Project', summary: 'Click to describe this project.', status: 'on', keyDate: '', priority: 'medium', folder: defaultFolder, risks: [], team: [] };
     data.projects.push(np);
     activeTab = np.id;
     render(); scheduleSave();
@@ -939,6 +1058,42 @@ function makeFolderBtn(id, label, colorVar, count){
   return btn;
 }
 
+function makeTopicEditRow(topic, count){
+  const row = document.createElement('div');
+  const isActive = activeFolder === 'topic:'+topic.id;
+  row.className = 'topic-edit-row' + (isActive ? ' active' : '');
+  row.innerHTML = `
+    <span class="fdot" style="background:${topicColor(topic.id)}"></span>
+    <span class="flabel" contenteditable="true" data-ph="Topic name">${escapeHtml(topic.label)}</span>
+    <span class="fcount">${count}</span>
+    <span class="folder-icon-btn del" title="Delete topic">×</span>
+  `;
+  const labelEl = row.querySelector('.flabel');
+  labelEl.addEventListener('click', e=>{ e.stopPropagation(); });
+  labelEl.addEventListener('input', e=>{ topic.label = e.target.textContent; scheduleSave(); });
+  labelEl.addEventListener('blur', e=>{
+    const clean = e.target.textContent.trim() || 'Untitled topic';
+    topic.label = clean;
+    scheduleSave();
+    renderSidebarOnly();
+  });
+  labelEl.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); e.target.blur(); } });
+  row.querySelector('.folder-icon-btn.del').addEventListener('click', e=>{
+    e.stopPropagation();
+    if(data.topics.length <= 1){ alert("You need at least one topic."); return; }
+    const fallbackTopic = data.topics.find(x=>x.id!==topic.id);
+    if(!confirm(`Delete the "${topic.label}" topic? Its subfolders and projects will move under "${fallbackTopic.label}", and its shared goals will move there too.`)) return;
+    data.folders.forEach(f=>{ if(f.topicId===topic.id) f.topicId = fallbackTopic.id; });
+    (topic.techGoals||[]).forEach(g=>{ if(g.text && !fallbackTopic.techGoals.some(x=>x.text===g.text)) fallbackTopic.techGoals.push(g); });
+    (topic.commercialGoals||[]).forEach(g=>{ if(g.text && !fallbackTopic.commercialGoals.some(x=>x.text===g.text)) fallbackTopic.commercialGoals.push(g); });
+    data.topics = data.topics.filter(x=>x.id!==topic.id);
+    if(activeFolder === 'topic:'+topic.id) activeFolder = 'all';
+    render(); scheduleSave();
+  });
+  row.addEventListener('click', ()=>{ activeFolder = 'topic:'+topic.id; render(); });
+  return row;
+}
+
 function makeFolderEditRow(f, count){
   const row = document.createElement('div');
   row.className = 'folder-edit-row' + (activeFolder===f.id ? ' active' : '');
@@ -947,7 +1102,7 @@ function makeFolderEditRow(f, count){
     <span class="fdot" style="background:${folderColor(f.id)}"></span>
     <span class="flabel" contenteditable="true" data-ph="Filter name" style="color:${activeFolder===f.id ? 'var(--text-hi)' : ''}">${escapeHtml(f.label)}</span>
     <span class="fcount">${count}</span>
-    <span class="folder-icon-btn del" title="Delete filter">×</span>
+    <span class="folder-icon-btn del" title="Delete subfolder">×</span>
   `;
   const labelEl = row.querySelector('.flabel');
   labelEl.addEventListener('click', e=>{ e.stopPropagation(); });
@@ -961,9 +1116,13 @@ function makeFolderEditRow(f, count){
   labelEl.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); e.target.blur(); } });
   row.querySelector('.folder-icon-btn.del').addEventListener('click', e=>{
     e.stopPropagation();
-    if(data.folders.length <= 1){ alert("You need at least one filter."); return; }
-    if(!confirm(`Delete the "${f.label}" filter? Projects in it will move to "${data.folders.find(x=>x.id!==f.id).label}".`)) return;
-    const fallback = data.folders.find(x=>x.id!==f.id).id;
+    const siblings = data.folders.filter(x=>x.topicId===f.topicId && x.id!==f.id);
+    if(siblings.length === 0){
+      alert(`"${topicLabel(f.topicId)}" needs at least one subfolder. Delete the topic itself if you want to remove it entirely.`);
+      return;
+    }
+    if(!confirm(`Delete the "${f.label}" subfolder? Projects in it will move to "${siblings[0].label}".`)) return;
+    const fallback = siblings[0].id;
     data.projects.forEach(p=>{ if(p.folder===f.id) p.folder = fallback; });
     data.folders = data.folders.filter(x=>x.id!==f.id);
     if(activeFolder===f.id) activeFolder = 'all';
@@ -1009,7 +1168,12 @@ function renderMain(){
 
 function renderSummary(){
   const wrap = document.createElement('div');
-  const folderNote = activeFolder === 'all' ? '' : ` · ${folderLabel(activeFolder)}`;
+  let folderNote = '';
+  if(typeof activeFolder === 'string' && activeFolder.startsWith('topic:')){
+    folderNote = ` · ${topicLabel(activeFolder.slice(6))}`;
+  } else if(activeFolder !== 'all'){
+    folderNote = ` · ${folderLabel(activeFolder)}`;
+  }
   wrap.innerHTML = `
     <div class="page-head">
       <div>
@@ -1022,7 +1186,7 @@ function renderSummary(){
   const grid = document.createElement('div');
   grid.className = 'grid';
 
-  const projects = activeFolder === 'all' ? data.projects : data.projects.filter(p=>p.folder===activeFolder);
+  const projects = projectsForActiveFilter();
 
   projects.forEach(p=>{
     const card = document.createElement('div');
@@ -1055,45 +1219,44 @@ function renderSummary(){
 
 function renderGoalsPage(){
   const wrap = document.createElement('div');
-  const filterNote = activeFolder === 'all' ? '' : ` · ${folderLabel(activeFolder)}`;
   wrap.innerHTML = `
     <div class="page-head">
       <div>
-        <div class="page-eyebrow">Overview${filterNote}</div>
+        <div class="page-eyebrow">Overview</div>
         <h1 class="page-title">All goals, by date</h1>
-        <div class="page-sub">Tech and commercial goals across ${activeFolder === 'all' ? 'all projects' : 'this filter'}, grouped by team and sorted soonest first. Click a goal to open its project.</div>
+        <div class="page-sub">Tech and commercial goals are shared business goals per topic — the same list appears on every project under it. Click a goal to jump to that topic.</div>
       </div>
     </div>
   `;
 
-  const projects = activeFolder === 'all' ? data.projects : data.projects.filter(p=>p.folder===activeFolder);
-  const filtersToShow = activeFolder === 'all' ? data.folders : data.folders.filter(f=>f.id===activeFolder);
+  let topicsToShow;
+  if(activeFolder === 'all'){
+    topicsToShow = data.topics;
+  } else if(typeof activeFolder === 'string' && activeFolder.startsWith('topic:')){
+    topicsToShow = data.topics.filter(t=>t.id===activeFolder.slice(6));
+  } else {
+    const t = topicForFolder(activeFolder);
+    topicsToShow = t ? [t] : [];
+  }
 
-  wrap.appendChild(renderGoalsTable('Tech goals', 'techGoals', 'tech', projects, filtersToShow));
-  wrap.appendChild(renderGoalsTable('Commercial goals', 'commercialGoals', 'commercial', projects, filtersToShow));
+  wrap.appendChild(renderGoalsTable('Tech goals', 'techGoals', 'tech', topicsToShow));
+  wrap.appendChild(renderGoalsTable('Commercial goals', 'commercialGoals', 'commercial', topicsToShow));
 
   return wrap;
 }
 
-function renderGoalsTable(title, field, kind, projects, filtersToShow){
+function renderGoalsTable(title, field, kind, topicsToShow){
   const sec = document.createElement('div');
   sec.className = 'goals-table-section';
   sec.innerHTML = `<div class="goals-table-title">${title}</div>`;
 
   let anyGoals = false;
 
-  filtersToShow.forEach(f=>{
-    const projectsInFilter = projects.filter(p=>p.folder===f.id);
-    const goals = [];
-    projectsInFilter.forEach(p=>{
-      (p[field]||[]).forEach(g=>{
-        if(!g.text && !g.date) return; // skip fully empty placeholder rows
-        goals.push({ project:p, text:g.text, date:g.date });
-      });
-    });
+  topicsToShow.forEach(topic=>{
+    const goals = (topic[field]||[]).filter(g=> g.text || g.date);
     if(goals.length === 0) return;
     anyGoals = true;
-    goals.sort((a,b)=>{
+    const sorted = [...goals].sort((a,b)=>{
       const da = a.date || '9999-12-31', db = b.date || '9999-12-31';
       if(da !== db) return da < db ? -1 : 1;
       return (a.text||'').localeCompare(b.text||'');
@@ -1101,19 +1264,18 @@ function renderGoalsTable(title, field, kind, projects, filtersToShow){
 
     const group = document.createElement('div');
     group.className = 'goals-filter-group';
-    group.innerHTML = `<div class="goals-filter-heading"><span class="fdot" style="background:${folderColor(f.id)}"></span>${escapeHtml(f.label)}</div>`;
+    group.innerHTML = `<div class="goals-filter-heading"><span class="fdot" style="background:${topicColor(topic.id)}"></span>${escapeHtml(topic.label)}</div>`;
     const table = document.createElement('div');
     table.className = 'goals-table';
-    goals.forEach(g=>{
+    sorted.forEach(g=>{
       const overdue = g.date && g.date < todayStr();
       const row = document.createElement('div');
       row.className = 'goals-table-row';
       row.innerHTML = `
         <span class="goals-page-date${overdue ? ' overdue' : ''}">${g.date ? fmtDate(g.date) : 'No date'}</span>
         <span class="goals-page-text">${escapeHtml(g.text || 'Untitled goal')}</span>
-        <span class="goals-page-project">${escapeHtml(g.project.name)}</span>
       `;
-      row.onclick = ()=>{ activeTab = g.project.id; render(); };
+      row.onclick = ()=>{ activeFolder = 'topic:'+topic.id; activeTab = 'summary'; render(); };
       table.appendChild(row);
     });
     group.appendChild(table);
@@ -1145,15 +1307,17 @@ function rawPctForDate(dateStr, startStr, endStr){
   if(end <= start) return 0;
   return ((d - start) / (end - start)) * 100;
 }
-function computeTimelineWindow(projects){
+function computeTimelineWindow(topics, projects){
   const today = todayStr();
   let start = addDays(today, -14);
   let end = addDays(today, 60);
   const dates = [];
+  topics.forEach(t=>{
+    (t.techGoals||[]).forEach(g=>{ if(g.date) dates.push(g.date); });
+    (t.commercialGoals||[]).forEach(g=>{ if(g.date) dates.push(g.date); });
+  });
   projects.forEach(p=>{
     if(p.keyDate) dates.push(p.keyDate);
-    (p.techGoals||[]).forEach(g=>{ if(g.date) dates.push(g.date); });
-    (p.commercialGoals||[]).forEach(g=>{ if(g.date) dates.push(g.date); });
     p.team.forEach(t=> (t.tasks||[]).forEach(task=>{ if(!task.done && task.date) dates.push(task.date); }));
   });
   if(dates.length){
@@ -1181,11 +1345,16 @@ function buildMonthTicks(startStr, endStr){
   }
   return ticks;
 }
+function buildTopicGoalItems(topic){
+  const items = [];
+  (topic.techGoals||[]).forEach(g=>{ if(g.date) items.push({ kind:'tech', label:`Tech: ${g.text||'Untitled'}`, date:g.date }); });
+  (topic.commercialGoals||[]).forEach(g=>{ if(g.date) items.push({ kind:'commercial', label:`Commercial: ${g.text||'Untitled'}`, date:g.date }); });
+  items.sort((a,b)=> a.date.localeCompare(b.date));
+  return items;
+}
 function buildTimelineItems(p){
   const items = [];
   if(p.keyDate) items.push({ kind:'keydate', label:'Key date', date:p.keyDate });
-  (p.techGoals||[]).forEach(g=>{ if(g.date) items.push({ kind:'tech', label:`Tech: ${g.text||'Untitled'}`, date:g.date }); });
-  (p.commercialGoals||[]).forEach(g=>{ if(g.date) items.push({ kind:'commercial', label:`Commercial: ${g.text||'Untitled'}`, date:g.date }); });
   p.team.forEach(t=> (t.tasks||[]).forEach(task=>{ if(!task.done && task.date) items.push({ kind:'task', label:`${t.name}: ${task.text||'Untitled task'}`, date:task.date }); }));
   items.sort((a,b)=> a.date.localeCompare(b.date));
   return items;
@@ -1193,18 +1362,17 @@ function buildTimelineItems(p){
 
 function renderTimeline(){
   const wrap = document.createElement('div');
-  const filterNote = activeFolder === 'all' ? '' : ` · ${folderLabel(activeFolder)}`;
   wrap.innerHTML = `
     <div class="page-head">
       <div>
-        <div class="page-eyebrow">Overview${filterNote}</div>
+        <div class="page-eyebrow">Overview</div>
         <h1 class="page-title">Timeline</h1>
-        <div class="page-sub">Goals and open tasks plotted against time, per project. Each bar spans a project's earliest to latest dated item. The vertical line marks today, live.</div>
+        <div class="page-sub">Shared topic goals plus each project's key date and open tasks, plotted against time. The vertical line marks today, live.</div>
       </div>
     </div>
   `;
 
-  const projectsAll = activeFolder === 'all' ? data.projects : data.projects.filter(p=>p.folder===activeFolder);
+  const projectsAll = projectsForActiveFilter();
   if(projectsAll.length === 0){
     const empty = document.createElement('div');
     empty.className = 'page-sub'; empty.style.marginTop = '16px';
@@ -1213,9 +1381,18 @@ function renderTimeline(){
     return wrap;
   }
 
-  const { start, end } = computeTimelineWindow(projectsAll);
+  let topicsToShow;
+  if(activeFolder === 'all'){
+    topicsToShow = data.topics;
+  } else if(typeof activeFolder === 'string' && activeFolder.startsWith('topic:')){
+    topicsToShow = data.topics.filter(t=>t.id===activeFolder.slice(6));
+  } else {
+    const t = topicForFolder(activeFolder);
+    topicsToShow = t ? [t] : [];
+  }
+
+  const { start, end } = computeTimelineWindow(topicsToShow, projectsAll);
   const todayPct = pctForDate(todayStr(), start, end);
-  const filtersToShow = activeFolder === 'all' ? data.folders : data.folders.filter(f=>f.id===activeFolder);
 
   const chart = document.createElement('div');
   chart.className = 'timeline-chart';
@@ -1235,57 +1412,61 @@ function renderTimeline(){
   body.className = 'timeline-body';
   let anyRows = false;
 
-  filtersToShow.forEach(f=>{
-    const projectsInFilter = projectsAll.filter(p=>p.folder===f.id);
-    if(projectsInFilter.length === 0) return;
-    if(filtersToShow.length > 1){
+  function appendMarkerRow(rowLabel, items, onLabelClick){
+    const row = document.createElement('div');
+    row.className = 'timeline-row';
+    const label = document.createElement('div');
+    label.className = 'timeline-row-label';
+    label.innerHTML = rowLabel;
+    if(onLabelClick){ label.title = 'Open'; label.onclick = onLabelClick; }
+    row.appendChild(label);
+
+    const track = document.createElement('div');
+    track.className = 'timeline-row-track';
+
+    if(items.length >= 2){
+      const spanStart = items[0].date, spanEnd = items[items.length-1].date;
+      const leftPct = pctForDate(spanStart, start, end);
+      const rightPct = pctForDate(spanEnd, start, end);
+      const spanBar = document.createElement('div');
+      spanBar.className = 'timeline-span-bar';
+      spanBar.style.left = leftPct + '%';
+      spanBar.style.width = Math.max(0.6, rightPct - leftPct) + '%';
+      track.appendChild(spanBar);
+    }
+    if(items.length === 0){
+      track.innerHTML = `<span class="timeline-no-dates">No dated goals or tasks yet</span>`;
+    }
+    items.forEach(item=>{
+      const isOverdue = item.date < todayStr();
+      const marker = document.createElement('div');
+      marker.className = `timeline-marker ${item.kind}${isOverdue ? ' overdue' : ''}`;
+      marker.style.left = pctForDate(item.date, start, end) + '%';
+      marker.title = `${item.label} — ${fmtDate(item.date)}`;
+      if(onLabelClick) marker.onclick = (e)=>{ e.stopPropagation(); onLabelClick(); };
+      track.appendChild(marker);
+    });
+    row.appendChild(track);
+    body.appendChild(row);
+  }
+
+  topicsToShow.forEach(topic=>{
+    const topicFolderIds = data.folders.filter(f=>f.topicId===topic.id).map(f=>f.id);
+    const projectsInTopic = projectsAll.filter(p=>topicFolderIds.includes(p.folder));
+    if(projectsInTopic.length === 0) return;
+    anyRows = true;
+    if(topicsToShow.length > 1){
       const heading = document.createElement('div');
       heading.className = 'timeline-filter-heading';
-      heading.innerHTML = `<span class="fdot" style="background:${folderColor(f.id)}"></span>${escapeHtml(f.label)}`;
+      heading.innerHTML = `<span class="fdot" style="background:${topicColor(topic.id)}"></span>${escapeHtml(topic.label)}`;
       body.appendChild(heading);
     }
-    projectsInFilter.forEach(p=>{
-      anyRows = true;
+    const goalItems = buildTopicGoalItems(topic);
+    appendMarkerRow(`<em>${escapeHtml(topic.label)} goals</em>`, goalItems, ()=>{ activeFolder = 'topic:'+topic.id; activeTab = 'summary'; render(); });
+
+    projectsInTopic.forEach(p=>{
       const items = buildTimelineItems(p);
-      const row = document.createElement('div');
-      row.className = 'timeline-row';
-      const label = document.createElement('div');
-      label.className = 'timeline-row-label';
-      label.innerHTML = `${escapeHtml(p.name)}`;
-      label.title = 'Open this project';
-      label.onclick = ()=>{ activeTab = p.id; render(); };
-      row.appendChild(label);
-
-      const track = document.createElement('div');
-      track.className = 'timeline-row-track';
-
-      if(items.length >= 2){
-        const spanStart = items[0].date, spanEnd = items[items.length-1].date;
-        const leftPct = pctForDate(spanStart, start, end);
-        const rightPct = pctForDate(spanEnd, start, end);
-        const spanBar = document.createElement('div');
-        spanBar.className = 'timeline-span-bar';
-        spanBar.style.left = leftPct + '%';
-        spanBar.style.width = Math.max(0.6, rightPct - leftPct) + '%';
-        track.appendChild(spanBar);
-      }
-
-      if(items.length === 0){
-        track.innerHTML = `<span class="timeline-no-dates">No dated goals or tasks yet</span>`;
-      }
-
-      items.forEach(item=>{
-        const isOverdue = item.date < todayStr();
-        const marker = document.createElement('div');
-        marker.className = `timeline-marker ${item.kind}${isOverdue ? ' overdue' : ''}`;
-        marker.style.left = pctForDate(item.date, start, end) + '%';
-        marker.title = `${item.label} — ${fmtDate(item.date)}`;
-        marker.onclick = (e)=>{ e.stopPropagation(); activeTab = p.id; render(); };
-        track.appendChild(marker);
-      });
-
-      row.appendChild(track);
-      body.appendChild(row);
+      appendMarkerRow(escapeHtml(p.name), items, ()=>{ activeTab = p.id; render(); });
     });
   });
 
@@ -1385,8 +1566,9 @@ function rankProjects(projects){
   });
 }
 
-function buildAgendaForFolder(folderId){
-  const projects = rankProjects(data.projects.filter(p=>p.folder===folderId));
+function buildAgendaForTopic(topicId){
+  const topic = data.topics.find(t=>t.id===topicId);
+  const projects = rankProjects(data.projects.filter(p=>{ const t = topicForProject(p); return t && t.id === topicId; }));
   const today = todayStr();
   const completed = [];
   const upcoming = [];
@@ -1394,16 +1576,20 @@ function buildAgendaForFolder(folderId){
   const keyDates = [];
   const capacity = {};
 
-  projects.forEach(p=>{
-    if(p.keyDate && p.keyDate >= today) keyDates.push({ projectName:p.name, label:'Key date', date:p.keyDate, kind:null });
-    [['Tech goal', p.techGoals, 'tech'], ['Commercial goal', p.commercialGoals, 'commercial']].forEach(([kindLabel, list, kind])=>{
+  // Shared topic-level goals — each pushed once (not per project), since they're the same everywhere in this topic
+  if(topic){
+    [['Tech goal', topic.techGoals, 'tech'], ['Commercial goal', topic.commercialGoals, 'commercial']].forEach(([kindLabel, list, kind])=>{
       (list||[]).forEach(g=>{
         if(!g.date) return;
         const label = `${kindLabel}: ${g.text || 'Untitled'}`;
-        if(g.date >= today) keyDates.push({ projectName:p.name, label, date:g.date, kind });
-        if(isWithinNextDays(g.date, 14)) upcoming.push({ projectName:p.name, label, date:g.date, kind });
+        if(g.date >= today) keyDates.push({ projectName: `${topic.label} goal`, label, date:g.date, kind });
+        if(isWithinNextDays(g.date, 14)) upcoming.push({ projectName: `${topic.label} goal`, label, date:g.date, kind });
       });
     });
+  }
+
+  projects.forEach(p=>{
+    if(p.keyDate && p.keyDate >= today) keyDates.push({ projectName:p.name, label:'Key date', date:p.keyDate, kind:null });
     p.team.forEach(t=>{
       if(!capacity[t.name]) capacity[t.name] = { open:0, overdue:0, recurring:0 };
       (t.tasks||[]).forEach(task=>{
@@ -1503,39 +1689,42 @@ function copyAgendaText(folder, agenda, focusLabel, btn){
 
 function renderAgenda(){
   const wrap = document.createElement('div');
-  if(!data.folders.length){
-    wrap.innerHTML = `<div class="page-head"><div><div class="page-eyebrow">Meeting agenda</div><h1 class="page-title">No filters yet</h1><div class="page-sub">Add a filter from the sidebar first — agendas are generated per team/filter.</div></div></div>`;
+  if(!data.topics.length){
+    wrap.innerHTML = `<div class="page-head"><div><div class="page-eyebrow">Meeting agenda</div><h1 class="page-title">No topics yet</h1><div class="page-sub">Add a topic from the sidebar first — agendas are generated per team/topic.</div></div></div>`;
     return wrap;
   }
-  if(!activeAgendaFolder || !data.folders.some(f=>f.id===activeAgendaFolder)){
-    activeAgendaFolder = (activeFolder !== 'all' && data.folders.some(f=>f.id===activeFolder)) ? activeFolder : data.folders[0].id;
+  if(!activeAgendaFolder || !data.topics.some(t=>t.id===activeAgendaFolder)){
+    const currentTopicId = typeof activeFolder === 'string' && activeFolder.startsWith('topic:')
+      ? activeFolder.slice(6)
+      : (topicForFolder(activeFolder) ? topicForFolder(activeFolder).id : null);
+    activeAgendaFolder = (currentTopicId && data.topics.some(t=>t.id===currentTopicId)) ? currentTopicId : data.topics[0].id;
   }
-  const folder = data.folders.find(f=>f.id===activeAgendaFolder);
-  const agenda = buildAgendaForFolder(activeAgendaFolder);
+  const topic = data.topics.find(t=>t.id===activeAgendaFolder);
+  const agenda = buildAgendaForTopic(activeAgendaFolder);
 
   const head = document.createElement('div');
   head.className = 'page-head';
   head.style.display = 'block';
   head.innerHTML = `
     <div class="page-eyebrow">Meeting agenda</div>
-    <h1 class="page-title">${escapeHtml(folder.label)} team</h1>
-    <div class="page-sub">Auto-generated from ${agenda.projects.length} project${agenda.projects.length===1?'':'s'} in this filter. Covers the last 14 days and the next 14 days.</div>
+    <h1 class="page-title">${escapeHtml(topic.label)} team</h1>
+    <div class="page-sub">Auto-generated from ${agenda.projects.length} project${agenda.projects.length===1?'':'s'} under this topic. Covers the last 14 days and the next 14 days.</div>
   `;
   wrap.appendChild(head);
 
   const picker = document.createElement('div');
   picker.className = 'agenda-folder-picker';
-  data.folders.forEach(f=>{
+  data.topics.forEach(t=>{
     const pill = document.createElement('button');
-    pill.className = 'agenda-folder-pill' + (f.id===activeAgendaFolder ? ' active' : '');
-    pill.innerHTML = `<span class="fdot" style="background:${folderColor(f.id)}"></span>${escapeHtml(f.label)}`;
-    pill.onclick = ()=>{ activeAgendaFolder = f.id; render(); };
+    pill.className = 'agenda-folder-pill' + (t.id===activeAgendaFolder ? ' active' : '');
+    pill.innerHTML = `<span class="fdot" style="background:${topicColor(t.id)}"></span>${escapeHtml(t.label)}`;
+    pill.onclick = ()=>{ activeAgendaFolder = t.id; render(); };
     picker.appendChild(pill);
   });
   const copyBtn = document.createElement('button');
   copyBtn.className = 'agenda-copy-btn';
   copyBtn.textContent = 'Copy for meeting notes';
-  copyBtn.onclick = ()=> copyAgendaText(folder, agenda, meetingLabel(activeAgendaMeetingType), copyBtn);
+  copyBtn.onclick = ()=> copyAgendaText(topic, agenda, meetingLabel(activeAgendaMeetingType), copyBtn);
   picker.appendChild(copyBtn);
   wrap.appendChild(picker);
 
@@ -1554,7 +1743,7 @@ function renderAgenda(){
     const empty = document.createElement('div');
     empty.className = 'page-sub';
     empty.style.marginTop = '16px';
-    empty.textContent = `No projects in the "${folder.label}" filter yet.`;
+    empty.textContent = `No projects under the "${topic.label}" topic yet.`;
     wrap.appendChild(empty);
     return wrap;
   }
@@ -1671,8 +1860,8 @@ function renderProject(p){
         <button class="priority-toggle ${p.priority}">${PRIORITY_LABELS[p.priority]}</button>
       </div>
       <div class="status-block">
-        <span class="status-block-label">Folder</span>
-        <button class="folder-toggle" style="background:${folderColorBg(p.folder)}; color:${folderColor(p.folder)}">${folderLabel(p.folder)}</button>
+        <span class="status-block-label">Filter</span>
+        <button class="folder-toggle" style="background:${folderColorBg(p.folder)}; color:${folderColor(p.folder)}">${topicLabel(topicForProject(p) ? topicForProject(p).id : '')} · ${folderLabel(p.folder)}</button>
       </div>
       <div class="status-block">
         <span class="status-block-label">Next key date</span>
@@ -1698,10 +1887,13 @@ function renderProject(p){
   head.querySelector('.date-chip input').addEventListener('change', e=>{ p.keyDate = e.target.value; scheduleSave(); });
   wrap.appendChild(head);
 
+  const topic = topicForProject(p);
   const twoCol = document.createElement('div');
   twoCol.className = 'two-col';
-  twoCol.appendChild(renderGoalSection('Key tech goals', p.techGoals));
-  twoCol.appendChild(renderGoalSection('Key commercial goals', p.commercialGoals));
+  if(topic){
+    twoCol.appendChild(renderGoalSection(`Key tech goals`, topic.techGoals, topic));
+    twoCol.appendChild(renderGoalSection(`Key commercial goals`, topic.commercialGoals, topic));
+  }
   wrap.appendChild(twoCol);
 
   wrap.appendChild(renderTeamSection(p));
@@ -1723,10 +1915,10 @@ function renderProject(p){
   return wrap;
 }
 
-function renderGoalSection(title, list){
+function renderGoalSection(title, list, topic){
   const sec = document.createElement('div');
   sec.className = 'section';
-  sec.innerHTML = `<div class="section-head"><div class="section-title"><span class="ico"></span>${title}</div></div>`;
+  sec.innerHTML = `<div class="section-head"><div class="section-title"><span class="ico"></span>${title}</div>${topic ? `<span class="shared-badge" title="Editing here updates it for every ${escapeHtml(topic.label)} project">Shared · ${escapeHtml(topic.label)}</span>` : ''}</div>`;
   const ul = document.createElement('ul');
   ul.className = 'goal-list';
   list.forEach((goal, idx)=>{
