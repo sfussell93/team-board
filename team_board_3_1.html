@@ -338,7 +338,7 @@
   .p-card .edge{ position:absolute; left:0; top:0; bottom:0; width:4px; }
   .p-card h3{ font-family:'Space Grotesk',sans-serif; font-size:16px; margin:0 0 6px; padding-left:6px;}
   .p-card p.desc{ font-size:12.5px; color:#657a6c; margin:0 0 14px; padding-left:6px; line-height:1.5; min-height:36px;}
-  .p-card .row{ display:flex; justify-content:space-between; align-items:center; padding-left:6px; gap:8px;}
+  .p-card .row{ display:flex; justify-content:flex-end; align-items:center; padding-left:6px; gap:8px;}
   .avatars{ display:flex; }
   .avatar{
     width:24px; height:24px; border-radius:50%; background:var(--panel-2); color:#fff;
@@ -398,6 +398,17 @@
     border-radius:12px; padding:2px 8px; max-width:220px; outline:none; cursor:pointer;
   }
   .goal-link-select:hover{ border-color:#5f7a68; }
+  .goal-projects-row{ display:flex; align-items:center; gap:5px; flex-wrap:wrap; padding-left:14px; }
+  .goal-project-chip{
+    font-family:'Inter',sans-serif; font-size:11px; color:#8a9b90; background:#f6f4ee; border:1px solid transparent;
+    border-radius:12px; padding:2px 8px; cursor:pointer;
+  }
+  .goal-project-chip.active{ background:var(--accent-dim); color:var(--accent); font-weight:600; }
+  .goal-project-chip:hover{ border-color:#5f7a68; }
+  .goal-projects-reset{
+    font-family:'Inter',sans-serif; font-size:11px; color:#8a9b90; cursor:pointer; text-decoration:underline; margin-left:4px;
+  }
+  .goal-projects-reset:hover{ color:#4c5c52; }
   .add-line{ font-size:12.5px; color:#5f7a68; cursor:pointer; padding:8px 0 2px; display:flex; align-items:center; gap:6px; }
   .add-line:hover{ color:var(--accent); }
 
@@ -665,6 +676,13 @@ function topicForFolder(folderId){
   return data.topics.find(t=>t.id===f.topicId) || null;
 }
 function topicForProject(p){ return topicForFolder(p.folder); }
+function projectsInTopic(topicId){
+  return data.projects.filter(p=>{ const t = topicForProject(p); return t && t.id === topicId; });
+}
+// A goal with no explicit projectIds applies to every project in its topic (the default).
+function goalAppliesToProject(goal, projectId){
+  return !goal.projectIds || goal.projectIds.length === 0 || goal.projectIds.includes(projectId);
+}
 // Resolve the current sidebar selection (activeFolder) into the list of projects it should show.
 // activeFolder can be: 'all', 'topic:<id>' (every subfolder under that topic), or a plain subfolder id.
 function projectsForActiveFilter(){
@@ -788,8 +806,8 @@ async function loadData(){
     }
   });
   data.topics.forEach(t=>{
-    (t.techGoals||[]).forEach(g=>{ if(!g.id) g.id = uid('g'); if(g.linksTo === undefined) g.linksTo = ''; });
-    (t.commercialGoals||[]).forEach(g=>{ if(!g.id) g.id = uid('g'); });
+    (t.techGoals||[]).forEach(g=>{ if(!g.id) g.id = uid('g'); if(g.linksTo === undefined) g.linksTo = ''; if(!Array.isArray(g.projectIds)) g.projectIds = []; });
+    (t.commercialGoals||[]).forEach(g=>{ if(!g.id) g.id = uid('g'); if(!Array.isArray(g.projectIds)) g.projectIds = []; });
   });
   data.projects.forEach(p=>{
     if(!p.status) p.status = 'on';
@@ -1191,8 +1209,8 @@ function renderSummary(){
     <div class="page-head">
       <div>
         <div class="page-eyebrow">Overview${folderNote}</div>
-        <h1 class="page-title">Priorities right now</h1>
-        <div class="page-sub">What each project is chasing, who's on it, its next key date, and whether it's on track. Click a card to open it.</div>
+        <h1 class="page-title">Running projects</h1>
+        <div class="page-sub">What each project is chasing, its next key date, and whether it's on track. Click a card to open it.</div>
       </div>
     </div>
   `;
@@ -1211,7 +1229,6 @@ function renderSummary(){
       <p class="desc">${escapeHtml(p.summary || '')}</p>
       <div class="card-meta">${dateLine} <span class="meta-sep">·</span> <span class="p-flag ${p.priority}">${PRIORITY_LABELS[p.priority]}</span> <span class="p-flag" style="background:${folderColorBg(p.folder)}; color:${folderColor(p.folder)}">${folderLabel(p.folder)}</span></div>
       <div class="row">
-        <div class="avatars">${p.team.slice(0,5).map(t=>`<div class="avatar" style="background:${personColor(t.name)}" title="${escapeHtml(t.name)}">${initials(t.name)}</div>`).join('')}</div>
         <span class="badge ${p.status}">${STATUS_LABELS[p.status]}</span>
       </div>
     `;
@@ -1285,9 +1302,18 @@ function renderGoalsTable(title, field, kind, topicsToShow){
       const row = document.createElement('div');
       row.className = 'goals-table-row';
       const linkedGoal = (kind === 'tech' && g.linksTo) ? (topic.commercialGoals||[]).find(cg=>cg.id===g.linksTo) : null;
+      const appliesToAll = !g.projectIds || g.projectIds.length === 0;
+      const topicProjects = projectsInTopic(topic.id);
+      const appliesLabel = appliesToAll
+        ? 'All projects'
+        : g.projectIds.map(pid=>{ const proj = topicProjects.find(p=>p.id===pid); return proj ? proj.name : null; }).filter(Boolean).join(', ') || 'All projects';
       row.innerHTML = `
         <span class="goals-page-date${overdue ? ' overdue' : ''}">${g.date ? fmtDate(g.date) : 'No date'}</span>
-        <span class="goals-page-text">${escapeHtml(g.text || 'Untitled goal')}${linkedGoal ? `<span class="goals-page-link">↳ responds to: ${escapeHtml(linkedGoal.text || 'Untitled goal')}</span>` : ''}</span>
+        <span class="goals-page-text">
+          ${escapeHtml(g.text || 'Untitled goal')}
+          ${linkedGoal ? `<span class="goals-page-link">↳ responds to: ${escapeHtml(linkedGoal.text || 'Untitled goal')}</span>` : ''}
+          ${topicProjects.length > 1 ? `<span class="goals-page-link">Applies to: ${escapeHtml(appliesLabel)}</span>` : ''}
+        </span>
       `;
       row.onclick = ()=>{ activeFolder = 'topic:'+topic.id; activeTab = 'summary'; render(); };
       table.appendChild(row);
@@ -1360,15 +1386,21 @@ function buildMonthTicks(startStr, endStr){
   return ticks;
 }
 function buildTopicGoalItems(topic){
+  // Only goals with no project restriction — narrowly-scoped goals show on their specific project's row instead.
   const items = [];
-  (topic.techGoals||[]).forEach(g=>{ if(g.date) items.push({ kind:'tech', label:`Tech: ${g.text||'Untitled'}`, date:g.date }); });
-  (topic.commercialGoals||[]).forEach(g=>{ if(g.date) items.push({ kind:'commercial', label:`Commercial: ${g.text||'Untitled'}`, date:g.date }); });
+  (topic.techGoals||[]).forEach(g=>{ if(g.date && (!g.projectIds || g.projectIds.length===0)) items.push({ kind:'tech', label:`Tech: ${g.text||'Untitled'}`, date:g.date }); });
+  (topic.commercialGoals||[]).forEach(g=>{ if(g.date && (!g.projectIds || g.projectIds.length===0)) items.push({ kind:'commercial', label:`Commercial: ${g.text||'Untitled'}`, date:g.date }); });
   items.sort((a,b)=> a.date.localeCompare(b.date));
   return items;
 }
 function buildTimelineItems(p){
   const items = [];
   if(p.keyDate) items.push({ kind:'keydate', label:'Key date', date:p.keyDate });
+  const topic = topicForProject(p);
+  if(topic){
+    (topic.techGoals||[]).forEach(g=>{ if(g.date && g.projectIds && g.projectIds.length>0 && g.projectIds.includes(p.id)) items.push({ kind:'tech', label:`Tech: ${g.text||'Untitled'}`, date:g.date }); });
+    (topic.commercialGoals||[]).forEach(g=>{ if(g.date && g.projectIds && g.projectIds.length>0 && g.projectIds.includes(p.id)) items.push({ kind:'commercial', label:`Commercial: ${g.text||'Untitled'}`, date:g.date }); });
+  }
   p.team.forEach(t=> (t.tasks||[]).forEach(task=>{ if(!task.done && task.date) items.push({ kind:'task', label:`${t.name}: ${task.text||'Untitled task'}`, date:task.date }); }));
   items.sort((a,b)=> a.date.localeCompare(b.date));
   return items;
@@ -1590,14 +1622,19 @@ function buildAgendaForTopic(topicId){
   const keyDates = [];
   const capacity = {};
 
-  // Shared topic-level goals — each pushed once (not per project), since they're the same everywhere in this topic
+  // Topic-level goals — each pushed once (not per project), labelled with which project(s) they apply to
   if(topic){
     [['Tech goal', topic.techGoals, 'tech'], ['Commercial goal', topic.commercialGoals, 'commercial']].forEach(([kindLabel, list, kind])=>{
       (list||[]).forEach(g=>{
         if(!g.date) return;
         const label = `${kindLabel}: ${g.text || 'Untitled'}`;
-        if(g.date >= today) keyDates.push({ projectName: `${topic.label} goal`, label, date:g.date, kind });
-        if(isWithinNextDays(g.date, 14)) upcoming.push({ projectName: `${topic.label} goal`, label, date:g.date, kind });
+        let scopeLabel = `${topic.label} — all projects`;
+        if(g.projectIds && g.projectIds.length > 0){
+          const names = g.projectIds.map(pid=>{ const proj = data.projects.find(x=>x.id===pid); return proj ? proj.name : null; }).filter(Boolean);
+          if(names.length) scopeLabel = names.join(', ');
+        }
+        if(g.date >= today) keyDates.push({ projectName: scopeLabel, label, date:g.date, kind });
+        if(isWithinNextDays(g.date, 14)) upcoming.push({ projectName: scopeLabel, label, date:g.date, kind });
       });
     });
   }
@@ -1905,8 +1942,8 @@ function renderProject(p){
   const twoCol = document.createElement('div');
   twoCol.className = 'two-col';
   if(topic){
-    twoCol.appendChild(renderGoalSection(`Key tech goals`, topic.techGoals, topic, topic.commercialGoals));
-    twoCol.appendChild(renderGoalSection(`Key commercial goals`, topic.commercialGoals, topic));
+    twoCol.appendChild(renderGoalSection(`Key tech goals`, topic.techGoals, topic, topic.commercialGoals, p.id));
+    twoCol.appendChild(renderGoalSection(`Key commercial goals`, topic.commercialGoals, topic, null, p.id));
   }
   wrap.appendChild(twoCol);
 
@@ -1929,13 +1966,15 @@ function renderProject(p){
   return wrap;
 }
 
-function renderGoalSection(title, list, topic, linkOptions){
+function renderGoalSection(title, list, topic, linkOptions, currentProjectId){
   const sec = document.createElement('div');
   sec.className = 'section';
-  sec.innerHTML = `<div class="section-head"><div class="section-title"><span class="ico"></span>${title}</div>${topic ? `<span class="shared-badge" title="Editing here updates it for every ${escapeHtml(topic.label)} project">Shared · ${escapeHtml(topic.label)}</span>` : ''}</div>`;
+  sec.innerHTML = `<div class="section-head"><div class="section-title"><span class="ico"></span>${title}</div>${topic ? `<span class="shared-badge" title="Editing here can update it wherever else this goal applies">Shared · ${escapeHtml(topic.label)}</span>` : ''}</div>`;
   const ul = document.createElement('ul');
   ul.className = 'goal-list';
-  list.forEach((goal, idx)=>{
+  const topicProjects = topic ? projectsInTopic(topic.id) : [];
+  const visible = currentProjectId ? list.filter(g=> goalAppliesToProject(g, currentProjectId)) : list;
+  visible.forEach(goal=>{
     const li = document.createElement('li');
     const linkRow = linkOptions
       ? `<div class="goal-link-row">
@@ -1946,6 +1985,14 @@ function renderGoalSection(title, list, topic, linkOptions){
           </select>
         </div>`
       : '';
+    const appliesToAll = !goal.projectIds || goal.projectIds.length === 0;
+    const projectsRow = (topicProjects.length > 1)
+      ? `<div class="goal-projects-row">
+          <span class="goal-link-label">Applies to:</span>
+          ${topicProjects.map(p=>`<button class="goal-project-chip${(appliesToAll || goal.projectIds.includes(p.id)) ? ' active' : ''}" data-pid="${p.id}">${escapeHtml(p.name)}</button>`).join('')}
+          ${!appliesToAll ? `<span class="goal-projects-reset">Reset to all</span>` : ''}
+        </div>`
+      : '';
     li.innerHTML = `
       <div class="goal-row-main">
         <span class="bullet"></span>
@@ -1954,13 +2001,36 @@ function renderGoalSection(title, list, topic, linkOptions){
         <span class="rm-btn">×</span>
       </div>
       ${linkRow}
+      ${projectsRow}
     `;
     li.querySelector('.goal-text').addEventListener('input', e=>{ goal.text = e.target.textContent; scheduleSave(); });
     li.querySelector('.goal-date').addEventListener('change', e=>{ goal.date = e.target.value; scheduleSave(); });
-    li.querySelector('.rm-btn').onclick = ()=>{ list.splice(idx,1); render(); scheduleSave(); };
+    li.querySelector('.rm-btn').onclick = ()=>{
+      const idx = list.findIndex(g=>g===goal);
+      if(idx > -1) list.splice(idx,1);
+      render(); scheduleSave();
+    };
     const linkSelect = li.querySelector('.goal-link-select');
     if(linkSelect){
       linkSelect.addEventListener('change', e=>{ goal.linksTo = e.target.value; scheduleSave(); });
+    }
+    li.querySelectorAll('.goal-project-chip').forEach(chip=>{
+      chip.addEventListener('click', ()=>{
+        const pid = chip.dataset.pid;
+        if(!Array.isArray(goal.projectIds)) goal.projectIds = [];
+        if(goal.projectIds.length === 0){
+          goal.projectIds = [pid]; // was "all" — narrow down to just this one
+        } else if(goal.projectIds.includes(pid)){
+          goal.projectIds = goal.projectIds.filter(id=>id!==pid);
+        } else {
+          goal.projectIds.push(pid);
+        }
+        render(); scheduleSave();
+      });
+    });
+    const resetLink = li.querySelector('.goal-projects-reset');
+    if(resetLink){
+      resetLink.addEventListener('click', ()=>{ goal.projectIds = []; render(); scheduleSave(); });
     }
     ul.appendChild(li);
   });
@@ -1968,7 +2038,10 @@ function renderGoalSection(title, list, topic, linkOptions){
   const add = document.createElement('div');
   add.className = 'add-line';
   add.textContent = '+ add goal';
-  add.onclick = ()=>{ list.push({ id: uid('g'), text:'New goal', date:'', linksTo:'' }); render(); scheduleSave(); };
+  add.onclick = ()=>{
+    list.push({ id: uid('g'), text:'New goal', date:'', linksTo:'', projectIds: currentProjectId ? [currentProjectId] : [] });
+    render(); scheduleSave();
+  };
   sec.appendChild(add);
   return sec;
 }
