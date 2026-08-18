@@ -181,24 +181,31 @@
   .agenda-recur-tag{ color:var(--accent); }
 
   /* ---------- Goals page ---------- */
-  .goals-page-list{ display:flex; flex-direction:column; }
-  .goals-page-row{
-    display:flex; align-items:center; gap:14px; padding:11px 4px; border-bottom:1px solid var(--line-soft);
+  .goals-table-section{ margin-bottom:36px; }
+  .goals-table-title{
+    font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:18px; color:var(--ink);
+    margin-bottom:16px; padding-bottom:10px; border-bottom:2px solid var(--ink);
+  }
+  .goals-filter-group{ margin-bottom:20px; }
+  .goals-filter-group:last-child{ margin-bottom:0; }
+  .goals-filter-heading{
+    display:flex; align-items:center; gap:7px; font-family:'JetBrains Mono',monospace; font-size:11px;
+    text-transform:uppercase; letter-spacing:0.6px; color:#5f7a68; margin-bottom:6px;
+  }
+  .goals-filter-heading .fdot{ width:7px; height:7px; border-radius:50%; flex-shrink:0; }
+  .goals-table{ display:flex; flex-direction:column; }
+  .goals-table-row{
+    display:flex; align-items:center; gap:14px; padding:9px 4px; border-bottom:1px solid var(--line-soft);
     cursor:pointer; font-size:13.5px;
   }
-  .goals-page-row:hover{ background:#f6f4ee; }
+  .goals-table-row:hover{ background:#f6f4ee; }
+  .goals-empty{ font-size:13px; color:#8a9b90; padding:6px 0 0; }
   .goals-page-date{
     font-family:'JetBrains Mono',monospace; font-size:11.5px; color:#5f7a68; width:64px; flex-shrink:0;
   }
   .goals-page-date.overdue{ color:var(--status-off); font-weight:600; }
-  .goals-page-kind{
-    font-family:'JetBrains Mono',monospace; font-size:10px; text-transform:uppercase; letter-spacing:0.4px;
-    padding:3px 8px; border-radius:10px; flex-shrink:0; width:78px; text-align:center;
-  }
-  .goals-page-kind.tech{ background:var(--priority-medium-bg); color:var(--priority-medium); }
-  .goals-page-kind.commercial{ background:var(--status-on-bg); color:var(--status-on); }
   .goals-page-text{ flex:1; color:#2b3c32; }
-  .goals-page-project{ font-size:12px; font-weight:600; flex-shrink:0; }
+  .goals-page-project{ font-size:12px; font-weight:600; color:#5f7a68; flex-shrink:0; }
 
   .tab-btn.has-folder{ border-left:3px solid transparent; padding-left:7px; }
 
@@ -809,7 +816,7 @@ function renderSidebar(){
   el.appendChild(makeTabBtn('agenda', 'Meeting agenda', null, null, null));
 
   const labelF = document.createElement('div');
-  labelF.className = 'nav-group-label'; labelF.textContent = 'Folders';
+  labelF.className = 'nav-group-label'; labelF.textContent = 'Filters';
   el.appendChild(labelF);
   el.appendChild(makeFolderBtn('all', 'All projects', null, data.projects.length));
   data.folders.forEach(f=>{
@@ -818,7 +825,7 @@ function renderSidebar(){
   });
   const addFolderBtn = document.createElement('button');
   addFolderBtn.className = 'add-folder-btn';
-  addFolderBtn.textContent = '+ Add folder';
+  addFolderBtn.textContent = '+ Add filter';
   addFolderBtn.onclick = ()=>{
     const nf = { id: uid('f'), label: 'New folder' };
     data.folders.push(nf);
@@ -839,7 +846,7 @@ function renderSidebar(){
   if(visibleProjects.length === 0){
     const empty = document.createElement('div');
     empty.style.cssText = 'font-size:12px; color:var(--text-lo); padding:6px 10px 4px;';
-    empty.textContent = 'No projects in this folder.';
+    empty.textContent = 'No projects in this filter.';
     el.appendChild(empty);
   }
   visibleProjects.forEach(p=>{
@@ -880,9 +887,9 @@ function makeFolderEditRow(f, count){
   if(activeFolder===f.id) row.style.background = 'rgba(255,255,255,0.07)';
   row.innerHTML = `
     <span class="fdot" style="background:${folderColor(f.id)}"></span>
-    <span class="flabel" contenteditable="true" data-ph="Folder name" style="color:${activeFolder===f.id ? 'var(--text-hi)' : ''}">${escapeHtml(f.label)}</span>
+    <span class="flabel" contenteditable="true" data-ph="Filter name" style="color:${activeFolder===f.id ? 'var(--text-hi)' : ''}">${escapeHtml(f.label)}</span>
     <span class="fcount">${count}</span>
-    <span class="folder-icon-btn del" title="Delete folder">×</span>
+    <span class="folder-icon-btn del" title="Delete filter">×</span>
   `;
   const labelEl = row.querySelector('.flabel');
   labelEl.addEventListener('click', e=>{ e.stopPropagation(); });
@@ -896,8 +903,8 @@ function makeFolderEditRow(f, count){
   labelEl.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); e.target.blur(); } });
   row.querySelector('.folder-icon-btn.del').addEventListener('click', e=>{
     e.stopPropagation();
-    if(data.folders.length <= 1){ alert("You need at least one folder."); return; }
-    if(!confirm(`Delete the "${f.label}" folder? Projects in it will move to "${data.folders.find(x=>x.id!==f.id).label}".`)) return;
+    if(data.folders.length <= 1){ alert("You need at least one filter."); return; }
+    if(!confirm(`Delete the "${f.label}" filter? Projects in it will move to "${data.folders.find(x=>x.id!==f.id).label}".`)) return;
     const fallback = data.folders.find(x=>x.id!==f.id).id;
     data.projects.forEach(p=>{ if(p.folder===f.id) p.folder = fallback; });
     data.folders = data.folders.filter(x=>x.id!==f.id);
@@ -979,7 +986,7 @@ function renderSummary(){
   if(projects.length === 0){
     const empty = document.createElement('div');
     empty.className = 'page-sub';
-    empty.textContent = 'No projects in this folder yet.';
+    empty.textContent = 'No projects in this filter yet.';
     wrap.appendChild(empty);
   }
 
@@ -989,56 +996,79 @@ function renderSummary(){
 
 function renderGoalsPage(){
   const wrap = document.createElement('div');
-  const folderNote = activeFolder === 'all' ? '' : ` · ${folderLabel(activeFolder)}`;
+  const filterNote = activeFolder === 'all' ? '' : ` · ${folderLabel(activeFolder)}`;
   wrap.innerHTML = `
     <div class="page-head">
       <div>
-        <div class="page-eyebrow">Overview${folderNote}</div>
+        <div class="page-eyebrow">Overview${filterNote}</div>
         <h1 class="page-title">All goals, by date</h1>
-        <div class="page-sub">Every tech and commercial goal across ${activeFolder === 'all' ? 'all projects' : 'this folder'}, soonest first. Click a goal to open its project.</div>
+        <div class="page-sub">Tech and commercial goals across ${activeFolder === 'all' ? 'all projects' : 'this filter'}, grouped by team and sorted soonest first. Click a goal to open its project.</div>
       </div>
     </div>
   `;
 
   const projects = activeFolder === 'all' ? data.projects : data.projects.filter(p=>p.folder===activeFolder);
-  const goals = [];
-  projects.forEach(p=>{
-    (p.techGoals||[]).forEach(g=> goals.push({ project:p, kind:'tech', text:g.text, date:g.date }));
-    (p.commercialGoals||[]).forEach(g=> goals.push({ project:p, kind:'commercial', text:g.text, date:g.date }));
-  });
-  goals.sort((a,b)=>{
-    const da = a.date || '9999-12-31', db = b.date || '9999-12-31';
-    if(da !== db) return da < db ? -1 : 1;
-    return (a.text||'').localeCompare(b.text||'');
-  });
+  const filtersToShow = activeFolder === 'all' ? data.folders : data.folders.filter(f=>f.id===activeFolder);
 
-  const list = document.createElement('div');
-  list.className = 'goals-page-list';
-  goals.forEach(g=>{
-    const row = document.createElement('div');
-    row.className = 'goals-page-row';
-    const overdue = g.date && g.date < todayStr();
-    row.innerHTML = `
-      <span class="goals-page-date${overdue ? ' overdue' : ''}">${g.date ? fmtDate(g.date) : 'No date'}</span>
-      <span class="goals-page-kind ${g.kind}">${g.kind === 'tech' ? 'Tech' : 'Commercial'}</span>
-      <span class="goals-page-text">${escapeHtml(g.text || 'Untitled goal')}</span>
-      <span class="goals-page-project" style="color:${folderColor(g.project.folder)}">${escapeHtml(g.project.name)}</span>
-    `;
-    row.onclick = ()=>{ activeTab = g.project.id; render(); };
-    list.appendChild(row);
-  });
-
-  if(goals.length === 0){
-    const empty = document.createElement('div');
-    empty.className = 'page-sub';
-    empty.style.marginTop = '16px';
-    empty.textContent = 'No goals logged yet. Add tech or commercial goals from within a project.';
-    wrap.appendChild(empty);
-  } else {
-    wrap.appendChild(list);
-  }
+  wrap.appendChild(renderGoalsTable('Tech goals', 'techGoals', 'tech', projects, filtersToShow));
+  wrap.appendChild(renderGoalsTable('Commercial goals', 'commercialGoals', 'commercial', projects, filtersToShow));
 
   return wrap;
+}
+
+function renderGoalsTable(title, field, kind, projects, filtersToShow){
+  const sec = document.createElement('div');
+  sec.className = 'goals-table-section';
+  sec.innerHTML = `<div class="goals-table-title">${title}</div>`;
+
+  let anyGoals = false;
+
+  filtersToShow.forEach(f=>{
+    const projectsInFilter = projects.filter(p=>p.folder===f.id);
+    const goals = [];
+    projectsInFilter.forEach(p=>{
+      (p[field]||[]).forEach(g=>{
+        if(!g.text && !g.date) return; // skip fully empty placeholder rows
+        goals.push({ project:p, text:g.text, date:g.date });
+      });
+    });
+    if(goals.length === 0) return;
+    anyGoals = true;
+    goals.sort((a,b)=>{
+      const da = a.date || '9999-12-31', db = b.date || '9999-12-31';
+      if(da !== db) return da < db ? -1 : 1;
+      return (a.text||'').localeCompare(b.text||'');
+    });
+
+    const group = document.createElement('div');
+    group.className = 'goals-filter-group';
+    group.innerHTML = `<div class="goals-filter-heading"><span class="fdot" style="background:${folderColor(f.id)}"></span>${escapeHtml(f.label)}</div>`;
+    const table = document.createElement('div');
+    table.className = 'goals-table';
+    goals.forEach(g=>{
+      const overdue = g.date && g.date < todayStr();
+      const row = document.createElement('div');
+      row.className = 'goals-table-row';
+      row.innerHTML = `
+        <span class="goals-page-date${overdue ? ' overdue' : ''}">${g.date ? fmtDate(g.date) : 'No date'}</span>
+        <span class="goals-page-text">${escapeHtml(g.text || 'Untitled goal')}</span>
+        <span class="goals-page-project">${escapeHtml(g.project.name)}</span>
+      `;
+      row.onclick = ()=>{ activeTab = g.project.id; render(); };
+      table.appendChild(row);
+    });
+    group.appendChild(table);
+    sec.appendChild(group);
+  });
+
+  if(!anyGoals){
+    const empty = document.createElement('div');
+    empty.className = 'goals-empty';
+    empty.textContent = `No ${kind} goals logged yet.`;
+    sec.appendChild(empty);
+  }
+
+  return sec;
 }
 
 function renderPeople(){
@@ -1225,7 +1255,7 @@ function copyAgendaText(folder, agenda, focusLabel, btn){
 function renderAgenda(){
   const wrap = document.createElement('div');
   if(!data.folders.length){
-    wrap.innerHTML = `<div class="page-head"><div><div class="page-eyebrow">Meeting agenda</div><h1 class="page-title">No folders yet</h1><div class="page-sub">Add a folder from the sidebar first — agendas are generated per team/folder.</div></div></div>`;
+    wrap.innerHTML = `<div class="page-head"><div><div class="page-eyebrow">Meeting agenda</div><h1 class="page-title">No filters yet</h1><div class="page-sub">Add a filter from the sidebar first — agendas are generated per team/filter.</div></div></div>`;
     return wrap;
   }
   if(!activeAgendaFolder || !data.folders.some(f=>f.id===activeAgendaFolder)){
@@ -1240,7 +1270,7 @@ function renderAgenda(){
   head.innerHTML = `
     <div class="page-eyebrow">Meeting agenda</div>
     <h1 class="page-title">${escapeHtml(folder.label)} team</h1>
-    <div class="page-sub">Auto-generated from ${agenda.projects.length} project${agenda.projects.length===1?'':'s'} in this folder. Covers the last 14 days and the next 14 days.</div>
+    <div class="page-sub">Auto-generated from ${agenda.projects.length} project${agenda.projects.length===1?'':'s'} in this filter. Covers the last 14 days and the next 14 days.</div>
   `;
   wrap.appendChild(head);
 
@@ -1275,7 +1305,7 @@ function renderAgenda(){
     const empty = document.createElement('div');
     empty.className = 'page-sub';
     empty.style.marginTop = '16px';
-    empty.textContent = `No projects in the "${folder.label}" folder yet.`;
+    empty.textContent = `No projects in the "${folder.label}" filter yet.`;
     wrap.appendChild(empty);
     return wrap;
   }
@@ -1343,7 +1373,7 @@ function renderAgenda(){
   capSec.innerHTML = `<div class="agenda-section-title">Team capacity</div>`;
   const capNames = Object.keys(agenda.capacity).sort((a,b)=> agenda.capacity[b].open - agenda.capacity[a].open);
   if(capNames.length === 0){
-    capSec.innerHTML += `<div class="agenda-empty">No team members assigned in this folder.</div>`;
+    capSec.innerHTML += `<div class="agenda-empty">No team members assigned in this filter.</div>`;
   } else {
     const capList = document.createElement('div');
     capList.className = 'agenda-cap-list';
