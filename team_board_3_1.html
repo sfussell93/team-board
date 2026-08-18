@@ -208,16 +208,17 @@
   .goals-filter-heading .fdot{ width:7px; height:7px; border-radius:50%; flex-shrink:0; }
   .goals-table{ display:flex; flex-direction:column; }
   .goals-table-row{
-    display:flex; align-items:center; gap:14px; padding:9px 4px; border-bottom:1px solid var(--line-soft);
+    display:flex; align-items:flex-start; gap:14px; padding:9px 4px; border-bottom:1px solid var(--line-soft);
     cursor:pointer; font-size:13.5px;
   }
   .goals-table-row:hover{ background:#f6f4ee; }
   .goals-empty{ font-size:13px; color:#8a9b90; padding:6px 0 0; }
   .goals-page-date{
-    font-family:'JetBrains Mono',monospace; font-size:11.5px; color:#5f7a68; width:64px; flex-shrink:0;
+    font-family:'JetBrains Mono',monospace; font-size:11.5px; color:#5f7a68; width:64px; flex-shrink:0; padding-top:1px;
   }
   .goals-page-date.overdue{ color:var(--status-off); font-weight:600; }
   .goals-page-text{ flex:1; color:#2b3c32; }
+  .goals-page-link{ display:block; font-size:11.5px; color:#8a9b90; margin-top:2px; }
   .goals-page-project{ font-size:12px; font-weight:600; color:#5f7a68; flex-shrink:0; }
 
   /* ---------- Timeline / Gantt ---------- */
@@ -376,10 +377,11 @@
 
   .goal-list{ list-style:none; margin:0; padding:0; }
   .goal-list li{
-    display:flex; align-items:flex-start; gap:9px; padding:8px 0; font-size:13.5px; line-height:1.5;
+    display:flex; flex-direction:column; gap:4px; padding:8px 0; font-size:13.5px; line-height:1.5;
     border-bottom:1px solid var(--line-soft);
   }
   .goal-list li:last-child{ border-bottom:none; }
+  .goal-row-main{ display:flex; align-items:flex-start; gap:9px; }
   .goal-list li .bullet{ width:5px; height:5px; margin-top:7px; border-radius:50%; background:var(--accent); flex-shrink:0;}
   .goal-text{ flex:1; outline:none; }
   .goal-date{
@@ -389,6 +391,13 @@
   .rm-btn{ opacity:0; cursor:pointer; color:#b9c6bd; font-size:15px; line-height:1; padding:2px 4px; border-radius:4px; flex-shrink:0;}
   .goal-list li:hover .rm-btn, .team-row:hover .rm-btn{ opacity:1; }
   .rm-btn:hover{ color:var(--status-off); background:var(--status-off-bg); }
+  .goal-link-row{ display:flex; align-items:center; gap:6px; padding-left:14px; }
+  .goal-link-label{ font-family:'JetBrains Mono',monospace; font-size:10px; text-transform:uppercase; letter-spacing:0.4px; color:#8a9b90; flex-shrink:0; }
+  .goal-link-select{
+    font-family:'Inter',sans-serif; font-size:11.5px; color:#4c5c52; background:#fff; border:1px solid var(--line-soft);
+    border-radius:12px; padding:2px 8px; max-width:220px; outline:none; cursor:pointer;
+  }
+  .goal-link-select:hover{ border-color:#5f7a68; }
   .add-line{ font-size:12.5px; color:#5f7a68; cursor:pointer; padding:8px 0 2px; display:flex; align-items:center; gap:6px; }
   .add-line:hover{ color:var(--accent); }
 
@@ -777,6 +786,10 @@ async function loadData(){
     if(!f.topicId || !data.topics.some(t=>t.id===f.topicId)){
       f.topicId = data.topics[0].id;
     }
+  });
+  data.topics.forEach(t=>{
+    (t.techGoals||[]).forEach(g=>{ if(!g.id) g.id = uid('g'); if(g.linksTo === undefined) g.linksTo = ''; });
+    (t.commercialGoals||[]).forEach(g=>{ if(!g.id) g.id = uid('g'); });
   });
   data.projects.forEach(p=>{
     if(!p.status) p.status = 'on';
@@ -1271,9 +1284,10 @@ function renderGoalsTable(title, field, kind, topicsToShow){
       const overdue = g.date && g.date < todayStr();
       const row = document.createElement('div');
       row.className = 'goals-table-row';
+      const linkedGoal = (kind === 'tech' && g.linksTo) ? (topic.commercialGoals||[]).find(cg=>cg.id===g.linksTo) : null;
       row.innerHTML = `
         <span class="goals-page-date${overdue ? ' overdue' : ''}">${g.date ? fmtDate(g.date) : 'No date'}</span>
-        <span class="goals-page-text">${escapeHtml(g.text || 'Untitled goal')}</span>
+        <span class="goals-page-text">${escapeHtml(g.text || 'Untitled goal')}${linkedGoal ? `<span class="goals-page-link">↳ responds to: ${escapeHtml(linkedGoal.text || 'Untitled goal')}</span>` : ''}</span>
       `;
       row.onclick = ()=>{ activeFolder = 'topic:'+topic.id; activeTab = 'summary'; render(); };
       table.appendChild(row);
@@ -1891,7 +1905,7 @@ function renderProject(p){
   const twoCol = document.createElement('div');
   twoCol.className = 'two-col';
   if(topic){
-    twoCol.appendChild(renderGoalSection(`Key tech goals`, topic.techGoals, topic));
+    twoCol.appendChild(renderGoalSection(`Key tech goals`, topic.techGoals, topic, topic.commercialGoals));
     twoCol.appendChild(renderGoalSection(`Key commercial goals`, topic.commercialGoals, topic));
   }
   wrap.appendChild(twoCol);
@@ -1915,7 +1929,7 @@ function renderProject(p){
   return wrap;
 }
 
-function renderGoalSection(title, list, topic){
+function renderGoalSection(title, list, topic, linkOptions){
   const sec = document.createElement('div');
   sec.className = 'section';
   sec.innerHTML = `<div class="section-head"><div class="section-title"><span class="ico"></span>${title}</div>${topic ? `<span class="shared-badge" title="Editing here updates it for every ${escapeHtml(topic.label)} project">Shared · ${escapeHtml(topic.label)}</span>` : ''}</div>`;
@@ -1923,22 +1937,38 @@ function renderGoalSection(title, list, topic){
   ul.className = 'goal-list';
   list.forEach((goal, idx)=>{
     const li = document.createElement('li');
+    const linkRow = linkOptions
+      ? `<div class="goal-link-row">
+          <span class="goal-link-label">Responds to:</span>
+          <select class="goal-link-select">
+            <option value="">— not linked —</option>
+            ${linkOptions.map(o=>`<option value="${o.id}" ${o.id===goal.linksTo ? 'selected' : ''}>${escapeHtml(o.text || 'Untitled goal')}</option>`).join('')}
+          </select>
+        </div>`
+      : '';
     li.innerHTML = `
-      <span class="bullet"></span>
-      <span class="goal-text" contenteditable="true" data-ph="Describe the goal...">${escapeHtml(goal.text)}</span>
-      <input type="date" class="goal-date" value="${escapeHtml(goal.date||'')}">
-      <span class="rm-btn">×</span>
+      <div class="goal-row-main">
+        <span class="bullet"></span>
+        <span class="goal-text" contenteditable="true" data-ph="Describe the goal...">${escapeHtml(goal.text)}</span>
+        <input type="date" class="goal-date" value="${escapeHtml(goal.date||'')}">
+        <span class="rm-btn">×</span>
+      </div>
+      ${linkRow}
     `;
     li.querySelector('.goal-text').addEventListener('input', e=>{ goal.text = e.target.textContent; scheduleSave(); });
     li.querySelector('.goal-date').addEventListener('change', e=>{ goal.date = e.target.value; scheduleSave(); });
     li.querySelector('.rm-btn').onclick = ()=>{ list.splice(idx,1); render(); scheduleSave(); };
+    const linkSelect = li.querySelector('.goal-link-select');
+    if(linkSelect){
+      linkSelect.addEventListener('change', e=>{ goal.linksTo = e.target.value; scheduleSave(); });
+    }
     ul.appendChild(li);
   });
   sec.appendChild(ul);
   const add = document.createElement('div');
   add.className = 'add-line';
   add.textContent = '+ add goal';
-  add.onclick = ()=>{ list.push({ text:'New goal', date:'' }); render(); scheduleSave(); };
+  add.onclick = ()=>{ list.push({ id: uid('g'), text:'New goal', date:'', linksTo:'' }); render(); scheduleSave(); };
   sec.appendChild(add);
   return sec;
 }
