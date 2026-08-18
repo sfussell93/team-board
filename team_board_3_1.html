@@ -207,6 +207,63 @@
   .goals-page-text{ flex:1; color:#2b3c32; }
   .goals-page-project{ font-size:12px; font-weight:600; color:#5f7a68; flex-shrink:0; }
 
+  /* ---------- Timeline / Gantt ---------- */
+  .timeline-chart{ position:relative; margin-bottom:16px; }
+  .timeline-axis{
+    position:relative; height:24px; border-bottom:1px solid var(--line-soft); margin-left:180px; margin-bottom:4px;
+  }
+  .timeline-month-tick{
+    position:absolute; top:0; transform:translateX(-2px); font-family:'JetBrains Mono',monospace; font-size:10.5px;
+    color:#8a9b90; border-left:1px solid var(--line-soft); padding-left:5px; height:100%;
+  }
+  .timeline-body{ display:flex; flex-direction:column; }
+  .timeline-filter-heading{
+    display:flex; align-items:center; gap:7px; font-family:'JetBrains Mono',monospace; font-size:11px;
+    text-transform:uppercase; letter-spacing:0.6px; color:#5f7a68; margin:14px 0 6px;
+  }
+  .timeline-filter-heading .fdot{ width:7px; height:7px; border-radius:50%; flex-shrink:0; }
+  .timeline-row{ display:flex; align-items:center; min-height:34px; border-bottom:1px solid var(--line-soft); }
+  .timeline-row-label{
+    width:180px; flex-shrink:0; font-size:12.5px; font-weight:600; color:#2b3c32; cursor:pointer;
+    padding-right:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  }
+  .timeline-row-label:hover{ color:var(--accent); }
+  .timeline-row-track{ position:relative; flex:1; height:34px; }
+  .timeline-no-dates{
+    position:absolute; left:0; top:50%; transform:translateY(-50%); font-size:11.5px; color:#b9c6bd; font-style:italic;
+  }
+  .timeline-span-bar{
+    position:absolute; top:50%; transform:translateY(-50%); height:6px; background:#e4ece5; border-radius:4px;
+  }
+  .timeline-marker{
+    position:absolute; top:50%; width:10px; height:10px; border-radius:50%; transform:translate(-50%,-50%);
+    cursor:pointer; border:2px solid #fff; box-shadow:0 0 0 1px rgba(0,0,0,0.08);
+  }
+  .timeline-marker.keydate{ background:var(--ink); width:11px; height:11px; }
+  .timeline-marker.tech{ background:var(--priority-medium); }
+  .timeline-marker.commercial{ background:var(--status-on); }
+  .timeline-marker.task{ background:#9fb0a4; width:8px; height:8px; }
+  .timeline-marker.overdue{ background:var(--status-off); }
+  .timeline-today-line{
+    position:absolute; top:0; bottom:0; width:2px; background:var(--accent); pointer-events:none;
+  }
+  .timeline-today-label{
+    position:absolute; top:-22px; left:50%; transform:translateX(-50%); background:var(--accent); color:#0f1e16;
+    font-family:'JetBrains Mono',monospace; font-size:10px; font-weight:700; padding:2px 6px; border-radius:4px;
+    white-space:nowrap;
+  }
+  .timeline-legend{
+    display:flex; align-items:center; gap:18px; flex-wrap:wrap; font-size:12px; color:#5f7a68;
+    padding-top:14px; margin-top:8px; border-top:1px solid var(--line-soft);
+  }
+  .timeline-legend span{ display:flex; align-items:center; gap:6px; }
+  .timeline-legend-dot{ width:9px; height:9px; border-radius:50%; flex-shrink:0; }
+  .timeline-legend-dot.keydate{ background:var(--ink); }
+  .timeline-legend-dot.tech{ background:var(--priority-medium); }
+  .timeline-legend-dot.commercial{ background:var(--status-on); }
+  .timeline-legend-dot.task{ background:#9fb0a4; }
+  .timeline-legend-dot.overdue{ background:var(--status-off); }
+
   .tab-btn.has-folder{ border-left:3px solid transparent; padding-left:7px; }
 
   .sidebar-footer{ margin-top:auto; padding:14px 10px 4px; font-size:10.5px; color:var(--text-lo); font-family:'JetBrains Mono',monospace; border-top:1px solid var(--line); padding-top:14px; line-height:1.6;}
@@ -812,6 +869,7 @@ function renderSidebar(){
   el.appendChild(label1);
   el.appendChild(makeTabBtn('summary', 'Summary', null, null, null));
   el.appendChild(makeTabBtn('goals', 'Goals', null, null, null));
+  el.appendChild(makeTabBtn('timeline', 'Timeline', null, null, null));
   el.appendChild(makeTabBtn('people', 'Team members', null, null, null));
   el.appendChild(makeTabBtn('agenda', 'Meeting agenda', null, null, null));
 
@@ -936,6 +994,7 @@ function renderMain(){
 
   if(activeTab === 'summary') inner.appendChild(renderSummary());
   else if(activeTab === 'goals') inner.appendChild(renderGoalsPage());
+  else if(activeTab === 'timeline') inner.appendChild(renderTimeline());
   else if(activeTab === 'people') inner.appendChild(renderPeople());
   else if(activeTab === 'agenda') inner.appendChild(renderAgenda());
   else {
@@ -1069,6 +1128,196 @@ function renderGoalsTable(title, field, kind, projects, filtersToShow){
   }
 
   return sec;
+}
+
+// ---------- Timeline / Gantt view ----------
+function pctForDate(dateStr, startStr, endStr){
+  const start = new Date(startStr + 'T00:00:00').getTime();
+  const end = new Date(endStr + 'T00:00:00').getTime();
+  const d = new Date(dateStr + 'T00:00:00').getTime();
+  if(end <= start) return 0;
+  return Math.max(0, Math.min(100, ((d - start) / (end - start)) * 100));
+}
+function rawPctForDate(dateStr, startStr, endStr){
+  const start = new Date(startStr + 'T00:00:00').getTime();
+  const end = new Date(endStr + 'T00:00:00').getTime();
+  const d = new Date(dateStr + 'T00:00:00').getTime();
+  if(end <= start) return 0;
+  return ((d - start) / (end - start)) * 100;
+}
+function computeTimelineWindow(projects){
+  const today = todayStr();
+  let start = addDays(today, -14);
+  let end = addDays(today, 60);
+  const dates = [];
+  projects.forEach(p=>{
+    if(p.keyDate) dates.push(p.keyDate);
+    (p.techGoals||[]).forEach(g=>{ if(g.date) dates.push(g.date); });
+    (p.commercialGoals||[]).forEach(g=>{ if(g.date) dates.push(g.date); });
+    p.team.forEach(t=> (t.tasks||[]).forEach(task=>{ if(!task.done && task.date) dates.push(task.date); }));
+  });
+  if(dates.length){
+    const minD = dates.reduce((a,b)=> a<b?a:b);
+    const maxD = dates.reduce((a,b)=> a>b?a:b);
+    if(minD < start) start = addDays(minD, -7);
+    if(maxD > end) end = addDays(maxD, 7);
+  }
+  return { start, end };
+}
+function buildMonthTicks(startStr, endStr){
+  const ticks = [];
+  const d = new Date(startStr + 'T00:00:00');
+  d.setDate(1);
+  const endD = new Date(endStr + 'T00:00:00');
+  let guard = 0;
+  while(d <= endD && guard < 30){
+    const dStr = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+    const raw = rawPctForDate(dStr, startStr, endStr);
+    if(raw >= 0 && raw <= 100){
+      ticks.push({ pct: raw, label: d.toLocaleDateString('en-GB', { month:'short', year:'2-digit' }) });
+    }
+    d.setMonth(d.getMonth()+1);
+    guard++;
+  }
+  return ticks;
+}
+function buildTimelineItems(p){
+  const items = [];
+  if(p.keyDate) items.push({ kind:'keydate', label:'Key date', date:p.keyDate });
+  (p.techGoals||[]).forEach(g=>{ if(g.date) items.push({ kind:'tech', label:`Tech: ${g.text||'Untitled'}`, date:g.date }); });
+  (p.commercialGoals||[]).forEach(g=>{ if(g.date) items.push({ kind:'commercial', label:`Commercial: ${g.text||'Untitled'}`, date:g.date }); });
+  p.team.forEach(t=> (t.tasks||[]).forEach(task=>{ if(!task.done && task.date) items.push({ kind:'task', label:`${t.name}: ${task.text||'Untitled task'}`, date:task.date }); }));
+  items.sort((a,b)=> a.date.localeCompare(b.date));
+  return items;
+}
+
+function renderTimeline(){
+  const wrap = document.createElement('div');
+  const filterNote = activeFolder === 'all' ? '' : ` · ${folderLabel(activeFolder)}`;
+  wrap.innerHTML = `
+    <div class="page-head">
+      <div>
+        <div class="page-eyebrow">Overview${filterNote}</div>
+        <h1 class="page-title">Timeline</h1>
+        <div class="page-sub">Goals and open tasks plotted against time, per project. Each bar spans a project's earliest to latest dated item. The vertical line marks today, live.</div>
+      </div>
+    </div>
+  `;
+
+  const projectsAll = activeFolder === 'all' ? data.projects : data.projects.filter(p=>p.folder===activeFolder);
+  if(projectsAll.length === 0){
+    const empty = document.createElement('div');
+    empty.className = 'page-sub'; empty.style.marginTop = '16px';
+    empty.textContent = 'No projects to show yet.';
+    wrap.appendChild(empty);
+    return wrap;
+  }
+
+  const { start, end } = computeTimelineWindow(projectsAll);
+  const todayPct = pctForDate(todayStr(), start, end);
+  const filtersToShow = activeFolder === 'all' ? data.folders : data.folders.filter(f=>f.id===activeFolder);
+
+  const chart = document.createElement('div');
+  chart.className = 'timeline-chart';
+
+  const axis = document.createElement('div');
+  axis.className = 'timeline-axis';
+  buildMonthTicks(start, end).forEach(tick=>{
+    const el = document.createElement('div');
+    el.className = 'timeline-month-tick';
+    el.style.left = tick.pct + '%';
+    el.textContent = tick.label;
+    axis.appendChild(el);
+  });
+  chart.appendChild(axis);
+
+  const body = document.createElement('div');
+  body.className = 'timeline-body';
+  let anyRows = false;
+
+  filtersToShow.forEach(f=>{
+    const projectsInFilter = projectsAll.filter(p=>p.folder===f.id);
+    if(projectsInFilter.length === 0) return;
+    if(filtersToShow.length > 1){
+      const heading = document.createElement('div');
+      heading.className = 'timeline-filter-heading';
+      heading.innerHTML = `<span class="fdot" style="background:${folderColor(f.id)}"></span>${escapeHtml(f.label)}`;
+      body.appendChild(heading);
+    }
+    projectsInFilter.forEach(p=>{
+      anyRows = true;
+      const items = buildTimelineItems(p);
+      const row = document.createElement('div');
+      row.className = 'timeline-row';
+      const label = document.createElement('div');
+      label.className = 'timeline-row-label';
+      label.innerHTML = `${escapeHtml(p.name)}`;
+      label.title = 'Open this project';
+      label.onclick = ()=>{ activeTab = p.id; render(); };
+      row.appendChild(label);
+
+      const track = document.createElement('div');
+      track.className = 'timeline-row-track';
+
+      if(items.length >= 2){
+        const spanStart = items[0].date, spanEnd = items[items.length-1].date;
+        const leftPct = pctForDate(spanStart, start, end);
+        const rightPct = pctForDate(spanEnd, start, end);
+        const spanBar = document.createElement('div');
+        spanBar.className = 'timeline-span-bar';
+        spanBar.style.left = leftPct + '%';
+        spanBar.style.width = Math.max(0.6, rightPct - leftPct) + '%';
+        track.appendChild(spanBar);
+      }
+
+      if(items.length === 0){
+        track.innerHTML = `<span class="timeline-no-dates">No dated goals or tasks yet</span>`;
+      }
+
+      items.forEach(item=>{
+        const isOverdue = item.date < todayStr();
+        const marker = document.createElement('div');
+        marker.className = `timeline-marker ${item.kind}${isOverdue ? ' overdue' : ''}`;
+        marker.style.left = pctForDate(item.date, start, end) + '%';
+        marker.title = `${item.label} — ${fmtDate(item.date)}`;
+        marker.onclick = (e)=>{ e.stopPropagation(); activeTab = p.id; render(); };
+        track.appendChild(marker);
+      });
+
+      row.appendChild(track);
+      body.appendChild(row);
+    });
+  });
+
+  chart.appendChild(body);
+
+  const todayLine = document.createElement('div');
+  todayLine.className = 'timeline-today-line';
+  todayLine.style.left = `calc(180px + (100% - 180px) * ${(todayPct/100).toFixed(4)})`;
+  todayLine.innerHTML = `<span class="timeline-today-label">Today</span>`;
+  chart.appendChild(todayLine);
+
+  wrap.appendChild(chart);
+
+  if(!anyRows){
+    const empty = document.createElement('div');
+    empty.className = 'page-sub'; empty.style.marginTop = '16px';
+    empty.textContent = 'No projects to show yet.';
+    wrap.appendChild(empty);
+  }
+
+  const legend = document.createElement('div');
+  legend.className = 'timeline-legend';
+  legend.innerHTML = `
+    <span><span class="timeline-legend-dot keydate"></span>Key date</span>
+    <span><span class="timeline-legend-dot tech"></span>Tech goal</span>
+    <span><span class="timeline-legend-dot commercial"></span>Commercial goal</span>
+    <span><span class="timeline-legend-dot task"></span>Open task</span>
+    <span><span class="timeline-legend-dot overdue"></span>Overdue</span>
+  `;
+  wrap.appendChild(legend);
+
+  return wrap;
 }
 
 function renderPeople(){
