@@ -234,8 +234,11 @@
   .goals-page-project{ font-size:12px; font-weight:600; color:#5f7a68; flex-shrink:0; }
 
   /* ---------- Timeline / Gantt ---------- */
-  .timeline-scroll{ overflow-x:auto; margin-bottom:16px; border:1px solid var(--line-soft); border-radius:10px; padding:12px 0; }
-  .timeline-scroll-inner{ position:relative; }
+  .timeline-scroll{
+    overflow-x:auto; margin-bottom:16px; border:1px solid var(--line-soft); border-radius:10px; padding:12px 0;
+    transform:scaleY(-1);
+  }
+  .timeline-scroll-inner{ position:relative; transform:scaleY(-1); }
   .timeline-axis{
     position:relative; height:24px; border-bottom:1px solid var(--line-soft); margin-bottom:4px;
   }
