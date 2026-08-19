@@ -236,7 +236,7 @@
   /* ---------- Timeline / Gantt ---------- */
   .timeline-chart{ position:relative; margin-bottom:16px; }
   .timeline-axis{
-    position:relative; height:24px; border-bottom:1px solid var(--line-soft); margin-left:180px; margin-bottom:4px;
+    position:relative; height:24px; border-bottom:1px solid var(--line-soft); margin-left:260px; margin-bottom:4px;
   }
   .timeline-month-tick{
     position:absolute; top:0; transform:translateX(-2px); font-family:'JetBrains Mono',monospace; font-size:10.5px;
@@ -245,21 +245,27 @@
   .timeline-body{ display:flex; flex-direction:column; }
   .timeline-filter-heading{
     display:flex; align-items:center; gap:7px; font-family:'JetBrains Mono',monospace; font-size:11px;
-    text-transform:uppercase; letter-spacing:0.6px; color:#5f7a68; margin:14px 0 6px;
+    text-transform:uppercase; letter-spacing:0.6px; color:#5f7a68; margin:16px 0 4px;
   }
   .timeline-filter-heading .fdot{ width:7px; height:7px; border-radius:50%; flex-shrink:0; }
-  .timeline-row{ display:flex; align-items:center; min-height:34px; border-bottom:1px solid var(--line-soft); }
+  .timeline-project-heading{
+    font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:13px; color:var(--ink); cursor:pointer;
+    padding:8px 0 4px 4px; border-bottom:1px solid var(--line-soft); margin-bottom:2px;
+  }
+  .timeline-project-heading:hover{ color:var(--accent); }
+  .timeline-row{ display:flex; align-items:center; min-height:30px; border-bottom:1px solid var(--line-soft); }
   .timeline-row-label{
-    width:180px; flex-shrink:0; font-size:12.5px; font-weight:600; color:#2b3c32; cursor:pointer;
-    padding-right:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+    width:260px; flex-shrink:0; font-size:12px; color:#4c5c52; cursor:pointer;
+    padding-right:12px; padding-left:14px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
   }
   .timeline-row-label:hover{ color:var(--accent); }
-  .timeline-row-track{ position:relative; flex:1; height:34px; }
+  .timeline-row-track{ position:relative; flex:1; height:30px; }
   .timeline-no-dates{
     position:absolute; left:0; top:50%; transform:translateY(-50%); font-size:11.5px; color:#b9c6bd; font-style:italic;
   }
-  .timeline-span-bar{
-    position:absolute; top:50%; transform:translateY(-50%); height:6px; background:#e4ece5; border-radius:4px;
+  .timeline-dep-bar{
+    position:absolute; top:50%; transform:translateY(-50%); height:4px; border-radius:3px;
+    background:repeating-linear-gradient(90deg, #d9a94a, #d9a94a 4px, transparent 4px, transparent 8px); opacity:0.6;
   }
   .timeline-marker{
     position:absolute; top:50%; width:10px; height:10px; border-radius:50%; transform:translate(-50%,-50%);
@@ -290,6 +296,10 @@
   .timeline-legend-dot.commercial{ background:var(--status-on); }
   .timeline-legend-dot.task{ background:#9fb0a4; }
   .timeline-legend-dot.overdue{ background:var(--status-off); }
+  .timeline-legend-dash{
+    width:16px; height:4px; border-radius:3px; flex-shrink:0;
+    background:repeating-linear-gradient(90deg, #d9a94a, #d9a94a 4px, transparent 4px, transparent 8px); opacity:0.8;
+  }
 
   .tab-btn.has-folder{ border-left:3px solid transparent; padding-left:7px; }
 
@@ -1485,26 +1495,6 @@ function buildMonthTicks(startStr, endStr){
   }
   return ticks;
 }
-function buildTopicGoalItems(topic){
-  // Only goals with no project restriction — narrowly-scoped goals show on their specific project's row instead.
-  const items = [];
-  (topic.techGoals||[]).forEach(g=>{ if(g.date && effectiveGoalProjectIds(g).length===0) items.push({ kind:'tech', label:`Tech: ${g.text||'Untitled'}`, date:g.date, blocked: isGoalBlocked(g, topic) }); });
-  (topic.commercialGoals||[]).forEach(g=>{ if(g.date && (!g.projectIds || g.projectIds.length===0)) items.push({ kind:'commercial', label:`Commercial: ${g.text||'Untitled'}`, date:g.date, blocked: isGoalBlocked(g, topic) }); });
-  items.sort((a,b)=> a.date.localeCompare(b.date));
-  return items;
-}
-function buildTimelineItems(p){
-  const items = [];
-  if(p.keyDate) items.push({ kind:'keydate', label:'Key date', date:p.keyDate });
-  const topic = topicForProject(p);
-  if(topic){
-    (topic.techGoals||[]).forEach(g=>{ const vis = effectiveGoalProjectIds(g); if(g.date && vis.length>0 && vis.includes(p.id)) items.push({ kind:'tech', label:`Tech: ${g.text||'Untitled'}`, date:g.date, blocked: isGoalBlocked(g, topic) }); });
-    (topic.commercialGoals||[]).forEach(g=>{ if(g.date && g.projectIds && g.projectIds.length>0 && g.projectIds.includes(p.id)) items.push({ kind:'commercial', label:`Commercial: ${g.text||'Untitled'}`, date:g.date, blocked: isGoalBlocked(g, topic) }); });
-  }
-  p.team.forEach(t=> (t.tasks||[]).forEach(task=>{ if(!task.done && task.date) items.push({ kind:'task', label:`${t.name}: ${task.text||'Untitled task'}`, date:task.date }); }));
-  items.sort((a,b)=> a.date.localeCompare(b.date));
-  return items;
-}
 
 function renderTimeline(){
   const wrap = document.createElement('div');
@@ -1513,7 +1503,7 @@ function renderTimeline(){
       <div>
         <div class="page-eyebrow">Overview</div>
         <h1 class="page-title">Timeline</h1>
-        <div class="page-sub">Shared topic goals plus each project's key date and open tasks, plotted against time. The vertical line marks today, live.</div>
+        <div class="page-sub">Every goal and open task gets its own row so you can read what it actually is. A thin bar shows a goal waiting on a dependency. The vertical line marks today, live.</div>
       </div>
     </div>
   `;
@@ -1558,61 +1548,122 @@ function renderTimeline(){
   body.className = 'timeline-body';
   let anyRows = false;
 
-  function appendMarkerRow(rowLabel, items, onLabelClick){
+  function addItemRow(label, date, kind, blocked, onClick, barFromDate){
     const row = document.createElement('div');
     row.className = 'timeline-row';
-    const label = document.createElement('div');
-    label.className = 'timeline-row-label';
-    label.innerHTML = rowLabel;
-    if(onLabelClick){ label.title = 'Open'; label.onclick = onLabelClick; }
-    row.appendChild(label);
+    const labelEl = document.createElement('div');
+    labelEl.className = 'timeline-row-label';
+    labelEl.textContent = label;
+    labelEl.title = label;
+    if(onClick){ labelEl.onclick = onClick; }
+    row.appendChild(labelEl);
 
     const track = document.createElement('div');
     track.className = 'timeline-row-track';
 
-    if(items.length >= 2){
-      const spanStart = items[0].date, spanEnd = items[items.length-1].date;
-      const leftPct = pctForDate(spanStart, start, end);
-      const rightPct = pctForDate(spanEnd, start, end);
-      const spanBar = document.createElement('div');
-      spanBar.className = 'timeline-span-bar';
-      spanBar.style.left = leftPct + '%';
-      spanBar.style.width = Math.max(0.6, rightPct - leftPct) + '%';
-      track.appendChild(spanBar);
-    }
-    if(items.length === 0){
-      track.innerHTML = `<span class="timeline-no-dates">No dated goals or tasks yet</span>`;
-    }
-    items.forEach(item=>{
-      const isOverdue = item.date < todayStr();
+    if(!date){
+      track.innerHTML = `<span class="timeline-no-dates">No date set</span>`;
+    } else {
+      if(barFromDate && barFromDate !== date){
+        const earlyDate = barFromDate < date ? barFromDate : date;
+        const lateDate = barFromDate < date ? date : barFromDate;
+        const leftPct = pctForDate(earlyDate, start, end);
+        const rightPct = pctForDate(lateDate, start, end);
+        const bar = document.createElement('div');
+        bar.className = 'timeline-dep-bar';
+        bar.style.left = leftPct + '%';
+        bar.style.width = Math.max(0.6, rightPct - leftPct) + '%';
+        bar.title = 'Waiting on a dependency before this can start';
+        track.appendChild(bar);
+      }
+      const isOverdue = date < todayStr();
       const marker = document.createElement('div');
-      marker.className = `timeline-marker ${item.kind}${isOverdue ? ' overdue' : ''}${item.blocked ? ' blocked' : ''}`;
-      marker.style.left = pctForDate(item.date, start, end) + '%';
-      marker.title = `${item.label} — ${fmtDate(item.date)}${item.blocked ? ' (waiting on another goal)' : ''}`;
-      if(onLabelClick) marker.onclick = (e)=>{ e.stopPropagation(); onLabelClick(); };
+      marker.className = `timeline-marker ${kind}${(isOverdue && kind !== 'keydate') ? ' overdue' : ''}${blocked ? ' blocked' : ''}`;
+      marker.style.left = pctForDate(date, start, end) + '%';
+      marker.title = `${label} — ${fmtDate(date)}${blocked ? ' (waiting on another goal)' : ''}`;
+      if(onClick) marker.onclick = (e)=>{ e.stopPropagation(); onClick(); };
       track.appendChild(marker);
-    });
+    }
     row.appendChild(track);
     body.appendChild(row);
+    anyRows = true;
+  }
+
+  // A dependent goal's implied "start" is the latest due date among its dependencies —
+  // this draws a thin bar showing the wait, without needing a separate start-date field.
+  function latestDependencyDate(goal, topic){
+    const deps = dependencyGoals(goal, topic).filter(d=>d.date);
+    if(deps.length === 0) return null;
+    return deps.map(d=>d.date).sort().slice(-1)[0];
   }
 
   topicsToShow.forEach(topic=>{
     const topicFolderIds = data.folders.filter(f=>f.topicId===topic.id).map(f=>f.id);
     const projectsInTopic = projectsAll.filter(p=>topicFolderIds.includes(p.folder));
     if(projectsInTopic.length === 0) return;
-    anyRows = true;
-    if(topicsToShow.length > 1){
-      const heading = document.createElement('div');
-      heading.className = 'timeline-filter-heading';
-      heading.innerHTML = `<span class="fdot" style="background:${topicColor(topic.id)}"></span>${escapeHtml(topic.label)}`;
-      body.appendChild(heading);
+
+    const heading = document.createElement('div');
+    heading.className = 'timeline-filter-heading';
+    heading.innerHTML = `<span class="fdot" style="background:${topicColor(topic.id)}"></span>${escapeHtml(topic.label)}`;
+    body.appendChild(heading);
+
+    // Shared goals (apply to every project in this topic) — one row per goal
+    const sharedGoals = [
+      ...(topic.techGoals||[]).filter(g=>effectiveGoalProjectIds(g).length===0).map(g=>({ goal:g, kind:'tech', label:`Tech · ${g.text||'Untitled goal'}` })),
+      ...(topic.commercialGoals||[]).filter(g=>(!g.projectIds || g.projectIds.length===0)).map(g=>({ goal:g, kind:'commercial', label:`Commercial · ${g.text||'Untitled goal'}` }))
+    ].filter(x=>x.goal.date).sort((a,b)=> a.goal.date.localeCompare(b.goal.date));
+
+    if(sharedGoals.length){
+      const subHead = document.createElement('div');
+      subHead.className = 'timeline-project-heading';
+      subHead.textContent = `${topic.label} goals (shared)`;
+      subHead.onclick = ()=>{ activeFolder = 'topic:'+topic.id; activeTab = 'summary'; render(); };
+      body.appendChild(subHead);
+      sharedGoals.forEach(({goal, kind, label})=>{
+        addItemRow(label, goal.date, kind, isGoalBlocked(goal, topic),
+          ()=>{ activeFolder = 'topic:'+topic.id; activeTab = 'summary'; render(); },
+          latestDependencyDate(goal, topic));
+      });
     }
-    const goalItems = buildTopicGoalItems(topic);
-    appendMarkerRow(`<em>${escapeHtml(topic.label)} goals</em>`, goalItems, ()=>{ activeFolder = 'topic:'+topic.id; activeTab = 'summary'; render(); });
 
     projectsInTopic.forEach(p=>{
-      const items = buildTimelineItems(p);
-      appendMarkerRow(escapeHtml(p.name), items, ()=>{ activeTab = p.id; render(); });
+      const pHeading = document.createElement('div');
+      pHeading.className = 'timeline-project-heading';
+      pHeading.textContent = p.name;
+      pHeading.onclick = ()=>{ activeTab = p.id; render(); };
+      body.appendChild(pHeading);
+
+      let rowsBefore = false;
+      const openClick = ()=>{ activeTab = p.id; render(); };
+
+      if(p.keyDate){
+        addItemRow('Key date', p.keyDate, 'keydate', false, openClick);
+        rowsBefore = true;
+      }
+      const projectGoals = [
+        ...(topic.techGoals||[]).filter(g=>{ const v = effectiveGoalProjectIds(g); return v.length>0 && v.includes(p.id); }).map(g=>({ goal:g, kind:'tech', label:`Tech · ${g.text||'Untitled goal'}` })),
+        ...(topic.commercialGoals||[]).filter(g=>g.projectIds && g.projectIds.length>0 && g.projectIds.includes(p.id)).map(g=>({ goal:g, kind:'commercial', label:`Commercial · ${g.text||'Untitled goal'}` }))
+      ].filter(x=>x.goal.date).sort((a,b)=> a.goal.date.localeCompare(b.goal.date));
+      projectGoals.forEach(({goal, kind, label})=>{
+        addItemRow(label, goal.date, kind, isGoalBlocked(goal, topic), openClick, latestDependencyDate(goal, topic));
+        rowsBefore = true;
+      });
+
+      const taskRows = [];
+      p.team.forEach(t=> (t.tasks||[]).forEach(task=>{ if(!task.done && task.date) taskRows.push({ t, task }); }));
+      taskRows.sort((a,b)=> a.task.date.localeCompare(b.task.date));
+      taskRows.forEach(({t, task})=>{
+        addItemRow(`${t.name} · ${task.text||'Untitled task'}`, task.date, 'task', false, openClick);
+        rowsBefore = true;
+      });
+
+      if(!rowsBefore){
+        const row = document.createElement('div');
+        row.className = 'timeline-row';
+        row.innerHTML = `<div class="timeline-row-label">—</div><div class="timeline-row-track"><span class="timeline-no-dates">No dated goals or tasks yet</span></div>`;
+        body.appendChild(row);
+        anyRows = true;
+      }
     });
   });
 
@@ -1620,7 +1671,7 @@ function renderTimeline(){
 
   const todayLine = document.createElement('div');
   todayLine.className = 'timeline-today-line';
-  todayLine.style.left = `calc(180px + (100% - 180px) * ${(todayPct/100).toFixed(4)})`;
+  todayLine.style.left = `calc(260px + (100% - 260px) * ${(todayPct/100).toFixed(4)})`;
   todayLine.innerHTML = `<span class="timeline-today-label">Today</span>`;
   chart.appendChild(todayLine);
 
@@ -1641,6 +1692,7 @@ function renderTimeline(){
     <span><span class="timeline-legend-dot commercial"></span>Commercial goal</span>
     <span><span class="timeline-legend-dot task"></span>Open task</span>
     <span><span class="timeline-legend-dot overdue"></span>Overdue</span>
+    <span><span class="timeline-legend-dash"></span>Waiting on a dependency</span>
   `;
   wrap.appendChild(legend);
 
