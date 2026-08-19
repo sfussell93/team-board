@@ -227,8 +227,8 @@
   .goals-page-status.in_progress{ background:var(--status-risk-bg); color:var(--status-risk); }
   .goals-page-status.done{ background:var(--status-on-bg); color:var(--status-on); }
   .goals-page-blocked{
-    display:inline-block; font-family:'JetBrains Mono',monospace; font-size:10px; font-weight:700; text-transform:uppercase;
-    letter-spacing:0.4px; color:var(--status-off); background:var(--status-off-bg); padding:2px 8px; border-radius:10px;
+    display:inline-block; font-size:11px; font-weight:500; text-transform:none;
+    letter-spacing:normal; color:#8a6a2f; background:#faf1de; padding:2px 8px; border-radius:10px;
     margin-left:6px; vertical-align:middle;
   }
   .goals-page-project{ font-size:12px; font-weight:600; color:#5f7a68; flex-shrink:0; }
@@ -270,7 +270,7 @@
   .timeline-marker.commercial{ background:var(--status-on); }
   .timeline-marker.task{ background:#9fb0a4; width:8px; height:8px; }
   .timeline-marker.overdue{ background:var(--status-off); }
-  .timeline-marker.blocked{ box-shadow:0 0 0 2px #fff, 0 0 0 4px var(--status-off); opacity:0.55; }
+  .timeline-marker.blocked{ box-shadow:0 0 0 2px #fff, 0 0 0 4px #d9a94a; opacity:0.7; }
   .timeline-today-line{
     position:absolute; top:0; bottom:0; width:2px; background:var(--accent); pointer-events:none;
   }
@@ -440,8 +440,9 @@
   }
   .goal-depends-select:hover{ border-color:#5f7a68; }
   .goal-blocked-tag{
-    font-family:'JetBrains Mono',monospace; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.4px;
-    color:var(--status-off); background:var(--status-off-bg); padding:3px 9px; border-radius:12px; flex-shrink:0;
+    font-family:'Inter',sans-serif; font-size:11px; font-weight:500; text-transform:none; letter-spacing:normal;
+    color:#8a6a2f; background:#faf1de; padding:3px 9px; border-radius:12px; flex-shrink:0;
+    max-width:260px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
   }
   .add-line{ font-size:12.5px; color:#5f7a68; cursor:pointer; padding:8px 0 2px; display:flex; align-items:center; gap:6px; }
   .add-line:hover{ color:var(--accent); }
@@ -1392,12 +1393,13 @@ function renderGoalsTable(title, field, kind, topicsToShow){
         ? 'All projects'
         : (topicProjects.filter(p=>visIds.includes(p.id)).map(p=>p.name).join(', ') || 'All projects');
       const blocked = isGoalBlocked(g, topic);
+      const depGoal = blocked && g.dependsOn ? goalById(topic, g.dependsOn) : null;
       row.innerHTML = `
         <span class="goals-page-date${overdue ? ' overdue' : ''}">${g.date ? fmtDate(g.date) : 'No date'}</span>
         <span class="goals-page-text">
           ${escapeHtml(g.text || 'Untitled goal')}
           <span class="goals-page-status ${g.status||'not_started'}">${GOAL_STATUS_LABELS[g.status||'not_started']}</span>
-          ${blocked ? `<span class="goals-page-blocked">🔒 Blocked</span>` : ''}
+          ${blocked ? `<span class="goals-page-blocked">⏳ Waiting on: ${escapeHtml(depGoal ? (depGoal.text||'Untitled goal') : '')}</span>` : ''}
           ${topicProjects.length > 1 ? `<span class="goals-page-link">Relevant to: ${escapeHtml(appliesLabel)}</span>` : ''}
         </span>
       `;
@@ -1574,7 +1576,7 @@ function renderTimeline(){
       const marker = document.createElement('div');
       marker.className = `timeline-marker ${item.kind}${isOverdue ? ' overdue' : ''}${item.blocked ? ' blocked' : ''}`;
       marker.style.left = pctForDate(item.date, start, end) + '%';
-      marker.title = `${item.label} — ${fmtDate(item.date)}${item.blocked ? ' (blocked)' : ''}`;
+      marker.title = `${item.label} — ${fmtDate(item.date)}${item.blocked ? ' (waiting on another goal)' : ''}`;
       if(onLabelClick) marker.onclick = (e)=>{ e.stopPropagation(); onLabelClick(); };
       track.appendChild(marker);
     });
@@ -1713,7 +1715,7 @@ function buildAgendaForTopic(topicId){
     [['Tech goal', topic.techGoals, 'tech'], ['Commercial goal', topic.commercialGoals, 'commercial']].forEach(([kindLabel, list, kind])=>{
       (list||[]).forEach(g=>{
         if(!g.date) return;
-        const label = `${kindLabel}: ${g.text || 'Untitled'}${isGoalBlocked(g, topic) ? ' (blocked)' : ''}`;
+        const label = `${kindLabel}: ${g.text || 'Untitled'}${isGoalBlocked(g, topic) ? ' (waiting on another goal)' : ''}`;
         const visIds = effectiveGoalProjectIds(g);
         let scopeLabel = `${topic.label} — all projects`;
         if(visIds.length > 0){
@@ -2114,7 +2116,7 @@ function renderGoalSection(title, list, topic, currentProjectId){
               return `<option value="${o.id}" ${o.id===goal.dependsOn ? 'selected' : ''}>[${isTechOption ? 'Tech' : 'Commercial'}] ${escapeHtml(o.text || 'Untitled goal')}</option>`;
             }).join('')}
           </select>
-          ${blocked ? `<span class="goal-blocked-tag" title="Waiting on: ${escapeHtml(depGoal ? (depGoal.text||'Untitled goal') : '')}">🔒 Blocked</span>` : ''}
+          ${blocked ? `<span class="goal-blocked-tag" title="${escapeHtml(depGoal ? (depGoal.text||'Untitled goal') : '')}">⏳ Waiting on: ${escapeHtml(depGoal ? (depGoal.text||'Untitled goal') : '')}</span>` : ''}
         </div>
       ` : ''}
     `;
