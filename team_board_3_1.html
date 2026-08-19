@@ -398,17 +398,27 @@
     border-radius:12px; padding:2px 8px; max-width:220px; outline:none; cursor:pointer;
   }
   .goal-link-select:hover{ border-color:#5f7a68; }
-  .goal-projects-row{ display:flex; align-items:center; gap:5px; flex-wrap:wrap; padding-left:14px; }
-  .goal-project-chip{
-    font-family:'Inter',sans-serif; font-size:11px; color:#8a9b90; background:#f6f4ee; border:1px solid transparent;
-    border-radius:12px; padding:2px 8px; cursor:pointer;
+  .goal-visible-caption{
+    font-size:11px; color:#8a9b90; padding-left:14px; font-style:italic;
   }
-  .goal-project-chip.active{ background:var(--accent-dim); color:var(--accent); font-weight:600; }
-  .goal-project-chip:hover{ border-color:#5f7a68; }
-  .goal-projects-reset{
-    font-family:'Inter',sans-serif; font-size:11px; color:#8a9b90; cursor:pointer; text-decoration:underline; margin-left:4px;
+  .goal-visible-picker{ position:relative; padding-left:14px; }
+  .goal-visible-toggle{
+    font-family:'Inter',sans-serif; font-size:11.5px; color:#5f7a68; background:none; border:1px solid var(--line-soft);
+    border-radius:12px; padding:2px 9px; cursor:pointer;
   }
-  .goal-projects-reset:hover{ color:#4c5c52; }
+  .goal-visible-toggle:hover{ border-color:#5f7a68; color:#2b3c32; }
+  .goal-visible-panel{
+    position:absolute; top:26px; left:14px; z-index:20; background:#fff; border:1px solid var(--line-soft);
+    border-radius:10px; padding:8px; box-shadow:0 6px 18px rgba(0,0,0,0.1); min-width:180px;
+  }
+  .goal-visible-option{
+    display:flex; align-items:center; gap:7px; font-size:12.5px; color:#2b3c32; padding:4px 4px; cursor:pointer; border-radius:5px;
+  }
+  .goal-visible-option:hover{ background:#f6f4ee; }
+  .goal-visible-done{
+    width:100%; margin-top:4px; background:var(--accent); color:#0f1e16; border:none; font-family:'Inter',sans-serif;
+    font-weight:600; font-size:11.5px; padding:5px 0; border-radius:8px; cursor:pointer;
+  }
   .add-line{ font-size:12.5px; color:#5f7a68; cursor:pointer; padding:8px 0 2px; display:flex; align-items:center; gap:6px; }
   .add-line:hover{ color:var(--accent); }
 
@@ -679,9 +689,21 @@ function topicForProject(p){ return topicForFolder(p.folder); }
 function projectsInTopic(topicId){
   return data.projects.filter(p=>{ const t = topicForProject(p); return t && t.id === topicId; });
 }
-// A goal with no explicit projectIds applies to every project in its topic (the default).
-function goalAppliesToProject(goal, projectId){
-  return !goal.projectIds || goal.projectIds.length === 0 || goal.projectIds.includes(projectId);
+// Commercial goals carry their own project scope. Tech goals inherit visibility from whichever
+// commercial goal they respond to (via linksTo); if unlinked, a tech goal defaults to all projects.
+function effectiveGoalProjectIds(goal, topic, isTech){
+  if(isTech){
+    if(goal.linksTo && topic){
+      const linked = (topic.commercialGoals||[]).find(cg=>cg.id===goal.linksTo);
+      if(linked) return linked.projectIds || [];
+    }
+    return [];
+  }
+  return goal.projectIds || [];
+}
+// A goal with no explicit project scope applies to every project in its topic (the default).
+function goalAppliesToProject(projectIds, projectId){
+  return !projectIds || projectIds.length === 0 || projectIds.includes(projectId);
 }
 // Resolve the current sidebar selection (activeFolder) into the list of projects it should show.
 // activeFolder can be: 'all', 'topic:<id>' (every subfolder under that topic), or a plain subfolder id.
@@ -1301,18 +1323,20 @@ function renderGoalsTable(title, field, kind, topicsToShow){
       const overdue = g.date && g.date < todayStr();
       const row = document.createElement('div');
       row.className = 'goals-table-row';
-      const linkedGoal = (kind === 'tech' && g.linksTo) ? (topic.commercialGoals||[]).find(cg=>cg.id===g.linksTo) : null;
-      const appliesToAll = !g.projectIds || g.projectIds.length === 0;
+      const isTech = kind === 'tech';
+      const linkedGoal = (isTech && g.linksTo) ? (topic.commercialGoals||[]).find(cg=>cg.id===g.linksTo) : null;
+      const visIds = effectiveGoalProjectIds(g, topic, isTech);
+      const appliesToAll = visIds.length === 0;
       const topicProjects = projectsInTopic(topic.id);
       const appliesLabel = appliesToAll
         ? 'All projects'
-        : g.projectIds.map(pid=>{ const proj = topicProjects.find(p=>p.id===pid); return proj ? proj.name : null; }).filter(Boolean).join(', ') || 'All projects';
+        : (topicProjects.filter(p=>visIds.includes(p.id)).map(p=>p.name).join(', ') || 'All projects');
       row.innerHTML = `
         <span class="goals-page-date${overdue ? ' overdue' : ''}">${g.date ? fmtDate(g.date) : 'No date'}</span>
         <span class="goals-page-text">
           ${escapeHtml(g.text || 'Untitled goal')}
           ${linkedGoal ? `<span class="goals-page-link">↳ responds to: ${escapeHtml(linkedGoal.text || 'Untitled goal')}</span>` : ''}
-          ${topicProjects.length > 1 ? `<span class="goals-page-link">Applies to: ${escapeHtml(appliesLabel)}</span>` : ''}
+          ${topicProjects.length > 1 ? `<span class="goals-page-link">Visible on: ${escapeHtml(appliesLabel)}</span>` : ''}
         </span>
       `;
       row.onclick = ()=>{ activeFolder = 'topic:'+topic.id; activeTab = 'summary'; render(); };
@@ -1388,7 +1412,7 @@ function buildMonthTicks(startStr, endStr){
 function buildTopicGoalItems(topic){
   // Only goals with no project restriction — narrowly-scoped goals show on their specific project's row instead.
   const items = [];
-  (topic.techGoals||[]).forEach(g=>{ if(g.date && (!g.projectIds || g.projectIds.length===0)) items.push({ kind:'tech', label:`Tech: ${g.text||'Untitled'}`, date:g.date }); });
+  (topic.techGoals||[]).forEach(g=>{ if(g.date && effectiveGoalProjectIds(g, topic, true).length===0) items.push({ kind:'tech', label:`Tech: ${g.text||'Untitled'}`, date:g.date }); });
   (topic.commercialGoals||[]).forEach(g=>{ if(g.date && (!g.projectIds || g.projectIds.length===0)) items.push({ kind:'commercial', label:`Commercial: ${g.text||'Untitled'}`, date:g.date }); });
   items.sort((a,b)=> a.date.localeCompare(b.date));
   return items;
@@ -1398,7 +1422,7 @@ function buildTimelineItems(p){
   if(p.keyDate) items.push({ kind:'keydate', label:'Key date', date:p.keyDate });
   const topic = topicForProject(p);
   if(topic){
-    (topic.techGoals||[]).forEach(g=>{ if(g.date && g.projectIds && g.projectIds.length>0 && g.projectIds.includes(p.id)) items.push({ kind:'tech', label:`Tech: ${g.text||'Untitled'}`, date:g.date }); });
+    (topic.techGoals||[]).forEach(g=>{ const vis = effectiveGoalProjectIds(g, topic, true); if(g.date && vis.length>0 && vis.includes(p.id)) items.push({ kind:'tech', label:`Tech: ${g.text||'Untitled'}`, date:g.date }); });
     (topic.commercialGoals||[]).forEach(g=>{ if(g.date && g.projectIds && g.projectIds.length>0 && g.projectIds.includes(p.id)) items.push({ kind:'commercial', label:`Commercial: ${g.text||'Untitled'}`, date:g.date }); });
   }
   p.team.forEach(t=> (t.tasks||[]).forEach(task=>{ if(!task.done && task.date) items.push({ kind:'task', label:`${t.name}: ${task.text||'Untitled task'}`, date:task.date }); }));
@@ -1628,9 +1652,10 @@ function buildAgendaForTopic(topicId){
       (list||[]).forEach(g=>{
         if(!g.date) return;
         const label = `${kindLabel}: ${g.text || 'Untitled'}`;
+        const visIds = effectiveGoalProjectIds(g, topic, kind === 'tech');
         let scopeLabel = `${topic.label} — all projects`;
-        if(g.projectIds && g.projectIds.length > 0){
-          const names = g.projectIds.map(pid=>{ const proj = data.projects.find(x=>x.id===pid); return proj ? proj.name : null; }).filter(Boolean);
+        if(visIds.length > 0){
+          const names = visIds.map(pid=>{ const proj = data.projects.find(x=>x.id===pid); return proj ? proj.name : null; }).filter(Boolean);
           if(names.length) scopeLabel = names.join(', ');
         }
         if(g.date >= today) keyDates.push({ projectName: scopeLabel, label, date:g.date, kind });
@@ -1966,33 +1991,51 @@ function renderProject(p){
   return wrap;
 }
 
+let openGoalPickerId = null; // which goal's "visible on" picker is currently expanded
+
 function renderGoalSection(title, list, topic, linkOptions, currentProjectId){
+  const isTech = !!linkOptions;
   const sec = document.createElement('div');
   sec.className = 'section';
   sec.innerHTML = `<div class="section-head"><div class="section-title"><span class="ico"></span>${title}</div>${topic ? `<span class="shared-badge" title="Editing here can update it wherever else this goal applies">Shared · ${escapeHtml(topic.label)}</span>` : ''}</div>`;
   const ul = document.createElement('ul');
   ul.className = 'goal-list';
   const topicProjects = topic ? projectsInTopic(topic.id) : [];
-  const visible = currentProjectId ? list.filter(g=> goalAppliesToProject(g, currentProjectId)) : list;
+  const visible = currentProjectId
+    ? list.filter(g=> goalAppliesToProject(effectiveGoalProjectIds(g, topic, isTech), currentProjectId))
+    : list;
+
   visible.forEach(goal=>{
     const li = document.createElement('li');
+    const visIds = effectiveGoalProjectIds(goal, topic, isTech);
+    const appliesToAll = visIds.length === 0;
+    const visLabel = appliesToAll ? 'All projects' : (topicProjects.filter(p=>visIds.includes(p.id)).map(p=>p.name).join(', ') || 'All projects');
+
     const linkRow = linkOptions
       ? `<div class="goal-link-row">
-          <span class="goal-link-label">Responds to:</span>
+          <span class="goal-link-label">Responds to</span>
           <select class="goal-link-select">
             <option value="">— not linked —</option>
             ${linkOptions.map(o=>`<option value="${o.id}" ${o.id===goal.linksTo ? 'selected' : ''}>${escapeHtml(o.text || 'Untitled goal')}</option>`).join('')}
           </select>
         </div>`
       : '';
-    const appliesToAll = !goal.projectIds || goal.projectIds.length === 0;
-    const projectsRow = (topicProjects.length > 1)
-      ? `<div class="goal-projects-row">
-          <span class="goal-link-label">Applies to:</span>
-          ${topicProjects.map(p=>`<button class="goal-project-chip${(appliesToAll || goal.projectIds.includes(p.id)) ? ' active' : ''}" data-pid="${p.id}">${escapeHtml(p.name)}</button>`).join('')}
-          ${!appliesToAll ? `<span class="goal-projects-reset">Reset to all</span>` : ''}
-        </div>`
-      : '';
+
+    // Only commercial goals (no linkOptions) get an editable visibility picker — tech goals inherit it.
+    const visibilityBlock = linkOptions
+      ? `<div class="goal-visible-caption">Visible on: ${escapeHtml(visLabel)}${!goal.linksTo ? ' (unlinked — defaults to all)' : ''}</div>`
+      : (topicProjects.length > 1
+        ? `<div class="goal-visible-picker">
+            <button type="button" class="goal-visible-toggle">Visible on: ${escapeHtml(visLabel)} ▾</button>
+            ${openGoalPickerId === goal.id ? `
+              <div class="goal-visible-panel">
+                <label class="goal-visible-option"><input type="checkbox" class="goal-visible-all" ${appliesToAll ? 'checked' : ''}> All projects</label>
+                ${topicProjects.map(p=>`<label class="goal-visible-option"><input type="checkbox" class="goal-visible-one" data-pid="${p.id}" ${visIds.includes(p.id) ? 'checked' : ''}> ${escapeHtml(p.name)}</label>`).join('')}
+                <button type="button" class="goal-visible-done">Done</button>
+              </div>` : ''}
+          </div>`
+        : '');
+
     li.innerHTML = `
       <div class="goal-row-main">
         <span class="bullet"></span>
@@ -2001,7 +2044,7 @@ function renderGoalSection(title, list, topic, linkOptions, currentProjectId){
         <span class="rm-btn">×</span>
       </div>
       ${linkRow}
-      ${projectsRow}
+      ${visibilityBlock}
     `;
     li.querySelector('.goal-text').addEventListener('input', e=>{ goal.text = e.target.textContent; scheduleSave(); });
     li.querySelector('.goal-date').addEventListener('change', e=>{ goal.date = e.target.value; scheduleSave(); });
@@ -2014,23 +2057,34 @@ function renderGoalSection(title, list, topic, linkOptions, currentProjectId){
     if(linkSelect){
       linkSelect.addEventListener('change', e=>{ goal.linksTo = e.target.value; scheduleSave(); });
     }
-    li.querySelectorAll('.goal-project-chip').forEach(chip=>{
-      chip.addEventListener('click', ()=>{
-        const pid = chip.dataset.pid;
+    const toggleBtn = li.querySelector('.goal-visible-toggle');
+    if(toggleBtn){
+      toggleBtn.addEventListener('click', ()=>{
+        openGoalPickerId = (openGoalPickerId === goal.id) ? null : goal.id;
+        render();
+      });
+    }
+    const allCheckbox = li.querySelector('.goal-visible-all');
+    if(allCheckbox){
+      allCheckbox.addEventListener('change', e=>{
+        if(e.target.checked){ goal.projectIds = []; render(); scheduleSave(); }
+      });
+    }
+    li.querySelectorAll('.goal-visible-one').forEach(cb=>{
+      cb.addEventListener('change', e=>{
+        const pid = e.target.dataset.pid;
         if(!Array.isArray(goal.projectIds)) goal.projectIds = [];
-        if(goal.projectIds.length === 0){
-          goal.projectIds = [pid]; // was "all" — narrow down to just this one
-        } else if(goal.projectIds.includes(pid)){
-          goal.projectIds = goal.projectIds.filter(id=>id!==pid);
+        if(e.target.checked){
+          if(!goal.projectIds.includes(pid)) goal.projectIds.push(pid);
         } else {
-          goal.projectIds.push(pid);
+          goal.projectIds = goal.projectIds.filter(id=>id!==pid);
         }
         render(); scheduleSave();
       });
     });
-    const resetLink = li.querySelector('.goal-projects-reset');
-    if(resetLink){
-      resetLink.addEventListener('click', ()=>{ goal.projectIds = []; render(); scheduleSave(); });
+    const doneBtn = li.querySelector('.goal-visible-done');
+    if(doneBtn){
+      doneBtn.addEventListener('click', ()=>{ openGoalPickerId = null; render(); });
     }
     ul.appendChild(li);
   });
@@ -2039,7 +2093,7 @@ function renderGoalSection(title, list, topic, linkOptions, currentProjectId){
   add.className = 'add-line';
   add.textContent = '+ add goal';
   add.onclick = ()=>{
-    list.push({ id: uid('g'), text:'New goal', date:'', linksTo:'', projectIds: currentProjectId ? [currentProjectId] : [] });
+    list.push({ id: uid('g'), text:'New goal', date:'', linksTo:'', projectIds: (!isTech && currentProjectId) ? [currentProjectId] : [] });
     render(); scheduleSave();
   };
   sec.appendChild(add);
