@@ -2224,9 +2224,9 @@ function renderSpecsSection(p){
   const topic = topicForProject(p);
   if(topic){
     if(!Array.isArray(topic.specs)) topic.specs = [];
-    wrap.appendChild(renderSpecList('Specs', topic.specs, topic));
+    wrap.appendChild(renderSpecList('Product spec targets', topic.specs, topic));
   }
-  wrap.appendChild(renderSpecList('This project only', p.specs, null, 'Specs that only apply to this project — differences from the shared baseline above.'));
+  wrap.appendChild(renderSpecList('Project specific spec targets', p.specs, null, 'Spec targets that only apply to this project — differences from the shared baseline above.'));
   return wrap;
 }
 
