@@ -234,9 +234,10 @@
   .goals-page-project{ font-size:12px; font-weight:600; color:#5f7a68; flex-shrink:0; }
 
   /* ---------- Timeline / Gantt ---------- */
-  .timeline-chart{ position:relative; margin-bottom:16px; }
+  .timeline-scroll{ overflow-x:auto; margin-bottom:16px; border:1px solid var(--line-soft); border-radius:10px; padding:12px 0; }
+  .timeline-scroll-inner{ position:relative; }
   .timeline-axis{
-    position:relative; height:24px; border-bottom:1px solid var(--line-soft); margin-left:260px; margin-bottom:4px;
+    position:relative; height:24px; border-bottom:1px solid var(--line-soft); margin-bottom:4px;
   }
   .timeline-month-tick{
     position:absolute; top:0; transform:translateX(-2px); font-family:'JetBrains Mono',monospace; font-size:10.5px;
@@ -244,22 +245,22 @@
   }
   .timeline-body{ display:flex; flex-direction:column; }
   .timeline-filter-heading{
-    display:flex; align-items:center; gap:7px; font-family:'JetBrains Mono',monospace; font-size:11px;
-    text-transform:uppercase; letter-spacing:0.6px; color:#5f7a68; margin:16px 0 4px;
+    position:sticky; left:0; display:inline-flex; align-items:center; gap:7px; font-family:'JetBrains Mono',monospace; font-size:11px;
+    text-transform:uppercase; letter-spacing:0.6px; color:#5f7a68; margin:16px 0 4px; background:var(--paper); padding-right:10px;
   }
   .timeline-filter-heading .fdot{ width:7px; height:7px; border-radius:50%; flex-shrink:0; }
   .timeline-project-heading{
-    font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:13px; color:var(--ink); cursor:pointer;
-    padding:8px 0 4px 4px; border-bottom:1px solid var(--line-soft); margin-bottom:2px;
+    position:sticky; left:0; display:inline-block; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:13px;
+    color:var(--ink); cursor:pointer; padding:8px 10px 4px 4px; background:var(--paper);
   }
   .timeline-project-heading:hover{ color:var(--accent); }
   .timeline-row{ display:flex; align-items:center; min-height:30px; border-bottom:1px solid var(--line-soft); }
   .timeline-row-label{
-    width:260px; flex-shrink:0; font-size:12px; color:#4c5c52; cursor:pointer;
-    padding-right:12px; padding-left:14px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+    position:sticky; left:0; flex-shrink:0; font-size:12px; color:#4c5c52; cursor:pointer; background:var(--paper);
+    padding-right:12px; padding-left:14px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; z-index:2;
   }
   .timeline-row-label:hover{ color:var(--accent); }
-  .timeline-row-track{ position:relative; flex:1; height:30px; }
+  .timeline-row-track{ position:relative; height:30px; flex-shrink:0; }
   .timeline-no-dates{
     position:absolute; left:0; top:50%; transform:translateY(-50%); font-size:11.5px; color:#b9c6bd; font-style:italic;
   }
@@ -1443,19 +1444,9 @@ function renderGoalsTable(title, field, kind, topicsToShow){
 }
 
 // ---------- Timeline / Gantt view ----------
-function pctForDate(dateStr, startStr, endStr){
-  const start = new Date(startStr + 'T00:00:00').getTime();
-  const end = new Date(endStr + 'T00:00:00').getTime();
-  const d = new Date(dateStr + 'T00:00:00').getTime();
-  if(end <= start) return 0;
-  return Math.max(0, Math.min(100, ((d - start) / (end - start)) * 100));
-}
-function rawPctForDate(dateStr, startStr, endStr){
-  const start = new Date(startStr + 'T00:00:00').getTime();
-  const end = new Date(endStr + 'T00:00:00').getTime();
-  const d = new Date(dateStr + 'T00:00:00').getTime();
-  if(end <= start) return 0;
-  return ((d - start) / (end - start)) * 100;
+const TIMELINE_PX_PER_DAY = 32; // fixed zoom level — wider window scrolls instead of squeezing everything to fit
+function pxForDate(dateStr, startStr){
+  return daysBetween(startStr, dateStr) * TIMELINE_PX_PER_DAY;
 }
 function computeTimelineWindow(topics, projects){
   const today = todayStr();
@@ -1484,11 +1475,11 @@ function buildMonthTicks(startStr, endStr){
   d.setDate(1);
   const endD = new Date(endStr + 'T00:00:00');
   let guard = 0;
-  while(d <= endD && guard < 30){
+  while(d <= endD && guard < 60){
     const dStr = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
-    const raw = rawPctForDate(dStr, startStr, endStr);
-    if(raw >= 0 && raw <= 100){
-      ticks.push({ pct: raw, label: d.toLocaleDateString('en-GB', { month:'short', year:'2-digit' }) });
+    const px = pxForDate(dStr, startStr);
+    if(px >= 0){
+      ticks.push({ px, label: d.toLocaleDateString('en-GB', { month:'short', year:'2-digit' }) });
     }
     d.setMonth(d.getMonth()+1);
     guard++;
@@ -1528,21 +1519,30 @@ function renderTimeline(){
   }
 
   const { start, end } = computeTimelineWindow(topicsToShow, projectsAll);
-  const todayPct = pctForDate(todayStr(), start, end);
+  const totalDays = Math.max(1, daysBetween(start, end));
+  const trackWidth = totalDays * TIMELINE_PX_PER_DAY;
+  const todayPx = pxForDate(todayStr(), start);
+  const LABEL_WIDTH = 220;
 
-  const chart = document.createElement('div');
-  chart.className = 'timeline-chart';
+  const scrollArea = document.createElement('div');
+  scrollArea.className = 'timeline-scroll';
+
+  const inner = document.createElement('div');
+  inner.className = 'timeline-scroll-inner';
+  inner.style.width = (LABEL_WIDTH + trackWidth) + 'px';
 
   const axis = document.createElement('div');
   axis.className = 'timeline-axis';
+  axis.style.marginLeft = LABEL_WIDTH + 'px';
+  axis.style.width = trackWidth + 'px';
   buildMonthTicks(start, end).forEach(tick=>{
     const el = document.createElement('div');
     el.className = 'timeline-month-tick';
-    el.style.left = tick.pct + '%';
+    el.style.left = tick.px + 'px';
     el.textContent = tick.label;
     axis.appendChild(el);
   });
-  chart.appendChild(axis);
+  inner.appendChild(axis);
 
   const body = document.createElement('div');
   body.className = 'timeline-body';
@@ -1553,6 +1553,7 @@ function renderTimeline(){
     row.className = 'timeline-row';
     const labelEl = document.createElement('div');
     labelEl.className = 'timeline-row-label';
+    labelEl.style.width = LABEL_WIDTH + 'px';
     labelEl.textContent = label;
     labelEl.title = label;
     if(onClick){ labelEl.onclick = onClick; }
@@ -1560,6 +1561,7 @@ function renderTimeline(){
 
     const track = document.createElement('div');
     track.className = 'timeline-row-track';
+    track.style.width = trackWidth + 'px';
 
     if(!date){
       track.innerHTML = `<span class="timeline-no-dates">No date set</span>`;
@@ -1567,19 +1569,19 @@ function renderTimeline(){
       if(barFromDate && barFromDate !== date){
         const earlyDate = barFromDate < date ? barFromDate : date;
         const lateDate = barFromDate < date ? date : barFromDate;
-        const leftPct = pctForDate(earlyDate, start, end);
-        const rightPct = pctForDate(lateDate, start, end);
+        const leftPx = pxForDate(earlyDate, start);
+        const rightPx = pxForDate(lateDate, start);
         const bar = document.createElement('div');
         bar.className = 'timeline-dep-bar';
-        bar.style.left = leftPct + '%';
-        bar.style.width = Math.max(0.6, rightPct - leftPct) + '%';
+        bar.style.left = leftPx + 'px';
+        bar.style.width = Math.max(4, rightPx - leftPx) + 'px';
         bar.title = 'Waiting on a dependency before this can start';
         track.appendChild(bar);
       }
       const isOverdue = date < todayStr();
       const marker = document.createElement('div');
       marker.className = `timeline-marker ${kind}${(isOverdue && kind !== 'keydate') ? ' overdue' : ''}${blocked ? ' blocked' : ''}`;
-      marker.style.left = pctForDate(date, start, end) + '%';
+      marker.style.left = pxForDate(date, start) + 'px';
       marker.title = `${label} — ${fmtDate(date)}${blocked ? ' (waiting on another goal)' : ''}`;
       if(onClick) marker.onclick = (e)=>{ e.stopPropagation(); onClick(); };
       track.appendChild(marker);
@@ -1660,22 +1662,26 @@ function renderTimeline(){
       if(!rowsBefore){
         const row = document.createElement('div');
         row.className = 'timeline-row';
-        row.innerHTML = `<div class="timeline-row-label">—</div><div class="timeline-row-track"><span class="timeline-no-dates">No dated goals or tasks yet</span></div>`;
+        row.innerHTML = `<div class="timeline-row-label" style="width:${LABEL_WIDTH}px;">—</div><div class="timeline-row-track" style="width:${trackWidth}px;"><span class="timeline-no-dates">No dated goals or tasks yet</span></div>`;
         body.appendChild(row);
         anyRows = true;
       }
     });
   });
 
-  chart.appendChild(body);
+  inner.appendChild(body);
 
   const todayLine = document.createElement('div');
   todayLine.className = 'timeline-today-line';
-  todayLine.style.left = `calc(260px + (100% - 260px) * ${(todayPct/100).toFixed(4)})`;
+  todayLine.style.left = (LABEL_WIDTH + todayPx) + 'px';
   todayLine.innerHTML = `<span class="timeline-today-label">Today</span>`;
-  chart.appendChild(todayLine);
+  inner.appendChild(todayLine);
 
-  wrap.appendChild(chart);
+  scrollArea.appendChild(inner);
+  wrap.appendChild(scrollArea);
+
+  // Jump the scroll position so "today" starts near the left edge rather than requiring a scroll to find it.
+  requestAnimationFrame(()=>{ scrollArea.scrollLeft = Math.max(0, todayPx - 60); });
 
   if(!anyRows){
     const empty = document.createElement('div');
