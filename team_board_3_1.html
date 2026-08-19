@@ -2109,7 +2109,10 @@ function renderGoalSection(title, list, topic, currentProjectId){
           <span class="goal-link-label">Depends on</span>
           <select class="goal-depends-select">
             <option value="">— nothing —</option>
-            ${depOptions.map(o=>`<option value="${o.id}" ${o.id===goal.dependsOn ? 'selected' : ''}>${escapeHtml(o.text || 'Untitled goal')}</option>`).join('')}
+            ${depOptions.map(o=>{
+              const isTechOption = (topic.techGoals||[]).includes(o);
+              return `<option value="${o.id}" ${o.id===goal.dependsOn ? 'selected' : ''}>[${isTechOption ? 'Tech' : 'Commercial'}] ${escapeHtml(o.text || 'Untitled goal')}</option>`;
+            }).join('')}
           </select>
           ${blocked ? `<span class="goal-blocked-tag" title="Waiting on: ${escapeHtml(depGoal ? (depGoal.text||'Untitled goal') : '')}">🔒 Blocked</span>` : ''}
         </div>
