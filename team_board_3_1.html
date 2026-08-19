@@ -476,6 +476,22 @@
   .risk-sev.low{ background:var(--status-on-bg); color:var(--status-on); }
   .risk-sev.med{ background:var(--status-risk-bg); color:var(--status-risk); }
   .risk-sev.high{ background:var(--status-off-bg); color:var(--status-off); }
+
+  /* Spec list */
+  .spec-list{ list-style:none; margin:0; padding:0; }
+  .spec-row{ display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid var(--line-soft); }
+  .spec-row:last-child{ border-bottom:none; }
+  .spec-attr{
+    width:150px; flex-shrink:0; font-size:13.5px; font-weight:600; outline:none; padding-top:1px;
+  }
+  .spec-value{ flex:1; font-size:13.5px; line-height:1.5; outline:none; color:#4c5c52; padding-top:1px; }
+  .spec-status{
+    font-family:'JetBrains Mono',monospace; font-size:10.5px; font-weight:700; padding:4px 10px;
+    border-radius:20px; text-transform:uppercase; letter-spacing:0.5px; cursor:pointer; border:none; flex-shrink:0;
+  }
+  .spec-status.tbd{ background:#eef0ee; color:#8a9b90; }
+  .spec-status.testing{ background:var(--status-risk-bg); color:var(--status-risk); }
+  .spec-status.set{ background:var(--status-on-bg); color:var(--status-on); }
   .task-add{ font-size:11.5px; color:#8a9b90; cursor:pointer; padding:4px 0 0; }
   .task-add:hover{ color:var(--accent); }
 
@@ -689,16 +705,8 @@ function topicForProject(p){ return topicForFolder(p.folder); }
 function projectsInTopic(topicId){
   return data.projects.filter(p=>{ const t = topicForProject(p); return t && t.id === topicId; });
 }
-// Commercial goals carry their own project scope. Tech goals inherit visibility from whichever
-// commercial goal they respond to (via linksTo); if unlinked, a tech goal defaults to all projects.
+// Every goal — tech or commercial — carries its own project scope directly now.
 function effectiveGoalProjectIds(goal, topic, isTech){
-  if(isTech){
-    if(goal.linksTo && topic){
-      const linked = (topic.commercialGoals||[]).find(cg=>cg.id===goal.linksTo);
-      if(linked) return linked.projectIds || [];
-    }
-    return [];
-  }
   return goal.projectIds || [];
 }
 // A goal with no explicit project scope applies to every project in its topic (the default).
@@ -837,6 +845,8 @@ async function loadData(){
     if(!p.priority) p.priority = 'medium';
     if(!p.folder || !data.folders.some(f=>f.id===p.folder)) p.folder = data.folders[0].id;
     if(!Array.isArray(p.risks)) p.risks = [];
+    if(!Array.isArray(p.specs)) p.specs = [];
+    p.specs.forEach(s=>{ if(!s.id) s.id = uid('sp'); if(!s.status) s.status = 'tbd'; });
     p.team.forEach(t=>{
       if(!Array.isArray(t.tasks)){
         t.tasks = t.working ? [{ text: t.working, done: false, date: '' }] : [];
@@ -1336,7 +1346,7 @@ function renderGoalsTable(title, field, kind, topicsToShow){
         <span class="goals-page-text">
           ${escapeHtml(g.text || 'Untitled goal')}
           ${linkedGoal ? `<span class="goals-page-link">↳ responds to: ${escapeHtml(linkedGoal.text || 'Untitled goal')}</span>` : ''}
-          ${topicProjects.length > 1 ? `<span class="goals-page-link">Visible on: ${escapeHtml(appliesLabel)}</span>` : ''}
+          ${topicProjects.length > 1 ? `<span class="goals-page-link">Relevant to: ${escapeHtml(appliesLabel)}</span>` : ''}
         </span>
       `;
       row.onclick = ()=>{ activeFolder = 'topic:'+topic.id; activeTab = 'summary'; render(); };
@@ -1972,6 +1982,8 @@ function renderProject(p){
   }
   wrap.appendChild(twoCol);
 
+  wrap.appendChild(renderSpecsSection(p));
+
   wrap.appendChild(renderTeamSection(p));
 
   wrap.appendChild(renderRiskSection(p));
@@ -2021,20 +2033,18 @@ function renderGoalSection(title, list, topic, linkOptions, currentProjectId){
         </div>`
       : '';
 
-    // Only commercial goals (no linkOptions) get an editable visibility picker — tech goals inherit it.
-    const visibilityBlock = linkOptions
-      ? `<div class="goal-visible-caption">Visible on: ${escapeHtml(visLabel)}${!goal.linksTo ? ' (unlinked — defaults to all)' : ''}</div>`
-      : (topicProjects.length > 1
-        ? `<div class="goal-visible-picker">
-            <button type="button" class="goal-visible-toggle">Visible on: ${escapeHtml(visLabel)} ▾</button>
-            ${openGoalPickerId === goal.id ? `
-              <div class="goal-visible-panel">
-                <label class="goal-visible-option"><input type="checkbox" class="goal-visible-all" ${appliesToAll ? 'checked' : ''}> All projects</label>
-                ${topicProjects.map(p=>`<label class="goal-visible-option"><input type="checkbox" class="goal-visible-one" data-pid="${p.id}" ${visIds.includes(p.id) ? 'checked' : ''}> ${escapeHtml(p.name)}</label>`).join('')}
-                <button type="button" class="goal-visible-done">Done</button>
-              </div>` : ''}
-          </div>`
-        : '');
+    // Both goal types get the same editable relevance picker now.
+    const visibilityBlock = (topicProjects.length > 1)
+      ? `<div class="goal-visible-picker">
+          <button type="button" class="goal-visible-toggle">Relevant to: ${escapeHtml(visLabel)} ▾</button>
+          ${openGoalPickerId === goal.id ? `
+            <div class="goal-visible-panel">
+              <label class="goal-visible-option"><input type="checkbox" class="goal-visible-all" ${appliesToAll ? 'checked' : ''}> All projects</label>
+              ${topicProjects.map(p=>`<label class="goal-visible-option"><input type="checkbox" class="goal-visible-one" data-pid="${p.id}" ${visIds.includes(p.id) ? 'checked' : ''}> ${escapeHtml(p.name)}</label>`).join('')}
+              <button type="button" class="goal-visible-done">Done</button>
+            </div>` : ''}
+        </div>`
+      : '';
 
     li.innerHTML = `
       <div class="goal-row-main">
@@ -2093,9 +2103,55 @@ function renderGoalSection(title, list, topic, linkOptions, currentProjectId){
   add.className = 'add-line';
   add.textContent = '+ add goal';
   add.onclick = ()=>{
-    list.push({ id: uid('g'), text:'New goal', date:'', linksTo:'', projectIds: (!isTech && currentProjectId) ? [currentProjectId] : [] });
+    list.push({ id: uid('g'), text:'New goal', date:'', linksTo:'', projectIds: currentProjectId ? [currentProjectId] : [] });
     render(); scheduleSave();
   };
+  sec.appendChild(add);
+  return sec;
+}
+
+const SPEC_STATUS_LABELS = { tbd:'TBD', testing:'Testing', set:'Set' };
+const SPEC_STATUS_ORDER = ['tbd','testing','set'];
+
+function renderSpecsSection(p){
+  const sec = document.createElement('div');
+  sec.className = 'section';
+  sec.innerHTML = `<div class="section-head"><div class="section-title"><span class="ico"></span>Specs</div></div>`;
+  const ul = document.createElement('ul');
+  ul.className = 'spec-list';
+  p.specs.forEach((spec, idx)=>{
+    if(!spec.status) spec.status = 'tbd';
+    const li = document.createElement('li');
+    li.className = 'spec-row';
+    li.innerHTML = `
+      <span class="spec-attr" contenteditable="true" data-ph="Attribute, e.g. Colour">${escapeHtml(spec.attribute||'')}</span>
+      <span class="spec-value" contenteditable="true" data-ph="Value or range, e.g. Forest green">${escapeHtml(spec.value||'')}</span>
+      <button class="spec-status ${spec.status}">${SPEC_STATUS_LABELS[spec.status]}</button>
+      <span class="rm-btn">×</span>
+    `;
+    li.querySelector('.spec-attr').addEventListener('input', e=>{ spec.attribute = e.target.textContent; scheduleSave(); });
+    li.querySelector('.spec-value').addEventListener('input', e=>{ spec.value = e.target.textContent; scheduleSave(); });
+    li.querySelector('.spec-status').onclick = e=>{
+      spec.status = SPEC_STATUS_ORDER[(SPEC_STATUS_ORDER.indexOf(spec.status)+1) % SPEC_STATUS_ORDER.length];
+      e.target.className = `spec-status ${spec.status}`;
+      e.target.textContent = SPEC_STATUS_LABELS[spec.status];
+      scheduleSave();
+    };
+    li.querySelector('.rm-btn').onclick = ()=>{ p.specs.splice(idx,1); render(); scheduleSave(); };
+    ul.appendChild(li);
+  });
+  sec.appendChild(ul);
+  if(p.specs.length === 0){
+    const empty = document.createElement('div');
+    empty.className = 'page-sub';
+    empty.style.marginBottom = '4px';
+    empty.textContent = 'No specs logged.';
+    sec.appendChild(empty);
+  }
+  const add = document.createElement('div');
+  add.className = 'add-line';
+  add.textContent = '+ add spec';
+  add.onclick = ()=>{ p.specs.push({ id: uid('sp'), attribute:'New attribute', value:'', status:'tbd' }); render(); scheduleSave(); };
   sec.appendChild(add);
   return sec;
 }
