@@ -508,6 +508,7 @@
   .risk-sev.high{ background:var(--status-off-bg); color:var(--status-off); }
 
   /* Spec list */
+  .spec-list-subtitle{ font-size:12px; color:#8a9b90; margin:-6px 0 8px; }
   .spec-list{ list-style:none; margin:0; padding:0; }
   .spec-row{ display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid var(--line-soft); }
   .spec-row:last-child{ border-bottom:none; }
@@ -753,12 +754,16 @@ function allTopicGoals(topic){
 function goalById(topic, id){
   return allTopicGoals(topic).find(g=>g.id===id) || null;
 }
-// A goal is blocked if it depends on another goal that isn't done yet.
+function dependencyGoals(goal, topic){
+  if(!Array.isArray(goal.dependsOnIds)) return [];
+  return goal.dependsOnIds.map(id=>goalById(topic, id)).filter(Boolean);
+}
+function unfinishedDependencies(goal, topic){
+  return dependencyGoals(goal, topic).filter(dep=>dep.status !== 'done');
+}
+// A goal is blocked if ANY of its dependencies aren't done yet.
 function isGoalBlocked(goal, topic){
-  if(!goal.dependsOn) return false;
-  const dep = goalById(topic, goal.dependsOn);
-  if(!dep) return false;
-  return dep.status !== 'done';
+  return unfinishedDependencies(goal, topic).length > 0;
 }
 // Resolve the current sidebar selection (activeFolder) into the list of projects it should show.
 // activeFolder can be: 'all', 'topic:<id>' (every subfolder under that topic), or a plain subfolder id.
@@ -888,14 +893,16 @@ async function loadData(){
       if(g.linksTo === undefined) g.linksTo = '';
       if(!Array.isArray(g.projectIds)) g.projectIds = [];
       if(!g.status) g.status = 'not_started';
-      if(g.dependsOn === undefined) g.dependsOn = '';
+      if(!Array.isArray(g.dependsOnIds)) g.dependsOnIds = g.dependsOn ? [g.dependsOn] : [];
     });
     (t.commercialGoals||[]).forEach(g=>{
       if(!g.id) g.id = uid('g');
       if(!Array.isArray(g.projectIds)) g.projectIds = [];
       if(!g.status) g.status = 'not_started';
-      if(g.dependsOn === undefined) g.dependsOn = '';
+      if(!Array.isArray(g.dependsOnIds)) g.dependsOnIds = g.dependsOn ? [g.dependsOn] : [];
     });
+    if(!Array.isArray(t.specs)) t.specs = [];
+    t.specs.forEach(s=>{ if(!s.id) s.id = uid('sp'); if(!s.status) s.status = 'tbd'; });
   });
   data.projects.forEach(p=>{
     if(!p.status) p.status = 'on';
@@ -1398,13 +1405,13 @@ function renderGoalsTable(title, field, kind, topicsToShow){
         ? 'All projects'
         : (topicProjects.filter(p=>visIds.includes(p.id)).map(p=>p.name).join(', ') || 'All projects');
       const blocked = isGoalBlocked(g, topic);
-      const depGoal = blocked && g.dependsOn ? goalById(topic, g.dependsOn) : null;
+      const waitingOn = blocked ? unfinishedDependencies(g, topic).map(d=>d.text||'Untitled goal').join(', ') : '';
       row.innerHTML = `
         <span class="goals-page-date${overdue ? ' overdue' : ''}">${g.date ? fmtDate(g.date) : 'No date'}</span>
         <span class="goals-page-text">
           ${escapeHtml(g.text || 'Untitled goal')}
           <span class="goals-page-status ${g.status||'not_started'}">${GOAL_STATUS_LABELS[g.status||'not_started']}</span>
-          ${blocked ? `<span class="goals-page-blocked">⏳ Waiting on: ${escapeHtml(depGoal ? (depGoal.text||'Untitled goal') : '')}</span>` : ''}
+          ${blocked ? `<span class="goals-page-blocked">⏳ Waiting on: ${escapeHtml(waitingOn)}</span>` : ''}
           ${topicProjects.length > 1 ? `<span class="goals-page-link">Relevant to: ${escapeHtml(appliesLabel)}</span>` : ''}
         </span>
       `;
@@ -2082,8 +2089,10 @@ function renderGoalSection(title, list, topic, currentProjectId){
     const appliesToAll = visIds.length === 0;
     const visLabel = appliesToAll ? 'All projects' : (topicProjects.filter(p=>visIds.includes(p.id)).map(p=>p.name).join(', ') || 'All projects');
     if(!goal.status) goal.status = 'not_started';
+    if(!Array.isArray(goal.dependsOnIds)) goal.dependsOnIds = [];
     const blocked = isGoalBlocked(goal, topic);
-    const depGoal = goal.dependsOn ? goalById(topic, goal.dependsOn) : null;
+    const depGoals = dependencyGoals(goal, topic);
+    const waitingOnGoals = unfinishedDependencies(goal, topic);
 
     const visibilityBlock = (topicProjects.length > 1)
       ? `<div class="goal-visible-picker">
@@ -2100,7 +2109,7 @@ function renderGoalSection(title, list, topic, currentProjectId){
 
     // Depends-on options: every other goal in the topic (tech + commercial), excluding itself and
     // anything that already depends on this goal (a simple guard against an immediate 2-way cycle).
-    const depOptions = topic ? allTopicGoals(topic).filter(g=> g.id !== goal.id && g.dependsOn !== goal.id) : [];
+    const depOptions = topic ? allTopicGoals(topic).filter(g=> g.id !== goal.id && !(Array.isArray(g.dependsOnIds) && g.dependsOnIds.includes(goal.id))) : [];
 
     li.innerHTML = `
       <div class="goal-row-main">
@@ -2115,18 +2124,18 @@ function renderGoalSection(title, list, topic, currentProjectId){
       </div>
       ${topic ? `
         <div class="goal-depends-row">
-          <button type="button" class="goal-depends-icon${goal.dependsOn ? ' active' : ''}" title="Set dependency">🔗</button>
+          <button type="button" class="goal-depends-icon${goal.dependsOnIds.length ? ' active' : ''}" title="Set dependencies">🔗</button>
           ${openDependsPickerId === goal.id ? `
             <div class="goal-visible-panel">
-              <label class="goal-visible-option"><input type="radio" name="dep-${goal.id}" class="goal-depends-radio" value="" ${!goal.dependsOn ? 'checked' : ''}> — nothing —</label>
-              ${depOptions.map(o=>{
+              ${depOptions.length === 0 ? `<div class="goal-visible-option" style="cursor:default;">No other goals yet</div>` : depOptions.map(o=>{
                 const isTechOption = (topic.techGoals||[]).includes(o);
-                return `<label class="goal-visible-option"><input type="radio" name="dep-${goal.id}" class="goal-depends-radio" value="${o.id}" ${o.id===goal.dependsOn ? 'checked' : ''}> [${isTechOption ? 'Tech' : 'Commercial'}] ${escapeHtml(o.text || 'Untitled goal')}</label>`;
+                return `<label class="goal-visible-option"><input type="checkbox" class="goal-depends-check" data-gid="${o.id}" ${goal.dependsOnIds.includes(o.id) ? 'checked' : ''}> [${isTechOption ? 'Tech' : 'Commercial'}] ${escapeHtml(o.text || 'Untitled goal')}</label>`;
               }).join('')}
+              <button type="button" class="goal-depends-panel-done">Done</button>
             </div>` : ''}
           ${blocked
-            ? `<span class="goal-blocked-tag" title="${escapeHtml(depGoal ? (depGoal.text||'Untitled goal') : '')}">⏳ Waiting on: ${escapeHtml(depGoal ? (depGoal.text||'Untitled goal') : '')}</span>`
-            : (depGoal ? `<span class="goal-depends-caption" title="${escapeHtml(depGoal.text||'Untitled goal')}">🔗 Depends on: ${escapeHtml(depGoal.text||'Untitled goal')} (done)</span>` : '')}
+            ? `<span class="goal-blocked-tag" title="${escapeHtml(waitingOnGoals.map(d=>d.text||'Untitled goal').join(', '))}">⏳ Waiting on: ${escapeHtml(waitingOnGoals.map(d=>d.text||'Untitled goal').join(', '))}</span>`
+            : (depGoals.length ? `<span class="goal-depends-caption" title="${escapeHtml(depGoals.map(d=>d.text||'Untitled goal').join(', '))}">🔗 Depends on: ${escapeHtml(depGoals.map(d=>d.text||'Untitled goal').join(', '))} (done)</span>` : '')}
         </div>
       ` : ''}
     `;
@@ -2148,13 +2157,22 @@ function renderGoalSection(title, list, topic, currentProjectId){
         render();
       });
     }
-    li.querySelectorAll('.goal-depends-radio').forEach(radio=>{
-      radio.addEventListener('change', e=>{
-        goal.dependsOn = e.target.value;
-        openDependsPickerId = null;
+    li.querySelectorAll('.goal-depends-check').forEach(cb=>{
+      cb.addEventListener('change', e=>{
+        const gid = e.target.dataset.gid;
+        if(!Array.isArray(goal.dependsOnIds)) goal.dependsOnIds = [];
+        if(e.target.checked){
+          if(!goal.dependsOnIds.includes(gid)) goal.dependsOnIds.push(gid);
+        } else {
+          goal.dependsOnIds = goal.dependsOnIds.filter(id=>id!==gid);
+        }
         render(); scheduleSave();
       });
     });
+    const dependsDoneBtn = li.querySelector('.goal-depends-panel-done');
+    if(dependsDoneBtn){
+      dependsDoneBtn.addEventListener('click', ()=>{ openDependsPickerId = null; render(); });
+    }
     const toggleBtn = li.querySelector('.goal-visible-icon');
     if(toggleBtn){
       toggleBtn.addEventListener('click', ()=>{
@@ -2191,7 +2209,7 @@ function renderGoalSection(title, list, topic, currentProjectId){
   add.className = 'add-line';
   add.textContent = '+ add goal';
   add.onclick = ()=>{
-    list.push({ id: uid('g'), text:'New goal', date:'', linksTo:'', projectIds: currentProjectId ? [currentProjectId] : [], status:'not_started', dependsOn:'' });
+    list.push({ id: uid('g'), text:'New goal', date:'', linksTo:'', projectIds: currentProjectId ? [currentProjectId] : [], status:'not_started', dependsOnIds:[] });
     render(); scheduleSave();
   };
   sec.appendChild(add);
@@ -2202,12 +2220,29 @@ const SPEC_STATUS_LABELS = { tbd:'TBD', testing:'Testing', set:'Set' };
 const SPEC_STATUS_ORDER = ['tbd','testing','set'];
 
 function renderSpecsSection(p){
+  const wrap = document.createElement('div');
+  const topic = topicForProject(p);
+  if(topic){
+    if(!Array.isArray(topic.specs)) topic.specs = [];
+    wrap.appendChild(renderSpecList('Specs', topic.specs, topic));
+  }
+  wrap.appendChild(renderSpecList('This project only', p.specs, null, 'Specs that only apply to this project — differences from the shared baseline above.'));
+  return wrap;
+}
+
+function renderSpecList(title, list, topic, subtitle){
   const sec = document.createElement('div');
   sec.className = 'section';
-  sec.innerHTML = `<div class="section-head"><div class="section-title"><span class="ico"></span>Specs</div></div>`;
+  sec.innerHTML = `
+    <div class="section-head">
+      <div class="section-title"><span class="ico"></span>${title}</div>
+      ${topic ? `<span class="shared-badge" title="Editing here updates it for every ${escapeHtml(topic.label)} project">Shared · ${escapeHtml(topic.label)}</span>` : ''}
+    </div>
+    ${subtitle ? `<div class="spec-list-subtitle">${subtitle}</div>` : ''}
+  `;
   const ul = document.createElement('ul');
   ul.className = 'spec-list';
-  p.specs.forEach((spec, idx)=>{
+  list.forEach((spec, idx)=>{
     if(!spec.status) spec.status = 'tbd';
     const li = document.createElement('li');
     li.className = 'spec-row';
@@ -2225,11 +2260,15 @@ function renderSpecsSection(p){
       e.target.textContent = SPEC_STATUS_LABELS[spec.status];
       scheduleSave();
     };
-    li.querySelector('.rm-btn').onclick = ()=>{ p.specs.splice(idx,1); render(); scheduleSave(); };
+    li.querySelector('.rm-btn').onclick = ()=>{
+      const rIdx = list.findIndex(s=>s===spec);
+      if(rIdx > -1) list.splice(rIdx,1);
+      render(); scheduleSave();
+    };
     ul.appendChild(li);
   });
   sec.appendChild(ul);
-  if(p.specs.length === 0){
+  if(list.length === 0){
     const empty = document.createElement('div');
     empty.className = 'page-sub';
     empty.style.marginBottom = '4px';
@@ -2239,7 +2278,7 @@ function renderSpecsSection(p){
   const add = document.createElement('div');
   add.className = 'add-line';
   add.textContent = '+ add spec';
-  add.onclick = ()=>{ p.specs.push({ id: uid('sp'), attribute:'New attribute', value:'', status:'tbd' }); render(); scheduleSave(); };
+  add.onclick = ()=>{ list.push({ id: uid('sp'), attribute:'New attribute', value:'', status:'tbd' }); render(); scheduleSave(); };
   sec.appendChild(add);
   return sec;
 }
