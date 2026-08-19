@@ -1447,7 +1447,7 @@ function renderGoalsTable(title, field, kind, topicsToShow){
 }
 
 // ---------- Timeline / Gantt view ----------
-const TIMELINE_PX_PER_DAY = 32; // fixed zoom level — wider window scrolls instead of squeezing everything to fit
+const TIMELINE_PX_PER_DAY = 11; // fixed zoom level — roughly 3 months fit on screen before you need to scroll
 function pxForDate(dateStr, startStr){
   return daysBetween(startStr, dateStr) * TIMELINE_PX_PER_DAY;
 }
