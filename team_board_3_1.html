@@ -433,12 +433,16 @@
   .goal-status-pill.not_started{ background:#eef0ee; color:#8a9b90; }
   .goal-status-pill.in_progress{ background:var(--status-risk-bg); color:var(--status-risk); }
   .goal-status-pill.done{ background:var(--status-on-bg); color:var(--status-on); }
-  .goal-depends-row{ display:flex; align-items:center; gap:7px; padding-left:14px; }
-  .goal-depends-select{
-    font-family:'Inter',sans-serif; font-size:11.5px; color:#4c5c52; background:#fff; border:1px solid var(--line-soft);
-    border-radius:12px; padding:2px 8px; max-width:220px; outline:none; cursor:pointer;
+  .goal-depends-row{ display:flex; align-items:center; gap:7px; padding-left:14px; position:relative; }
+  .goal-depends-icon{
+    font-size:12px; background:none; border:1px solid var(--line-soft); border-radius:10px; padding:2px 7px;
+    cursor:pointer; color:#b9c6bd; flex-shrink:0; line-height:1.4;
   }
-  .goal-depends-select:hover{ border-color:#5f7a68; }
+  .goal-depends-icon:hover{ border-color:#5f7a68; }
+  .goal-depends-icon.active{ color:#5f7a68; border-color:#5f7a68; background:#f6f4ee; }
+  .goal-depends-caption{
+    font-size:11px; color:#8a9b90; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:280px;
+  }
   .goal-blocked-tag{
     font-family:'Inter',sans-serif; font-size:11px; font-weight:500; text-transform:none; letter-spacing:normal;
     color:#8a6a2f; background:#faf1de; padding:3px 9px; border-radius:12px; flex-shrink:0;
@@ -2058,6 +2062,7 @@ function renderProject(p){
 }
 
 let openGoalPickerId = null; // which goal's "visible on" picker is currently expanded
+let openDependsPickerId = null; // which goal's "depends on" picker is currently expanded
 
 function renderGoalSection(title, list, topic, currentProjectId){
   const sec = document.createElement('div');
@@ -2108,15 +2113,18 @@ function renderGoalSection(title, list, topic, currentProjectId){
       </div>
       ${topic ? `
         <div class="goal-depends-row">
-          <span class="goal-link-label">Depends on</span>
-          <select class="goal-depends-select">
-            <option value="">— nothing —</option>
-            ${depOptions.map(o=>{
-              const isTechOption = (topic.techGoals||[]).includes(o);
-              return `<option value="${o.id}" ${o.id===goal.dependsOn ? 'selected' : ''}>[${isTechOption ? 'Tech' : 'Commercial'}] ${escapeHtml(o.text || 'Untitled goal')}</option>`;
-            }).join('')}
-          </select>
-          ${blocked ? `<span class="goal-blocked-tag" title="${escapeHtml(depGoal ? (depGoal.text||'Untitled goal') : '')}">⏳ Waiting on: ${escapeHtml(depGoal ? (depGoal.text||'Untitled goal') : '')}</span>` : ''}
+          <button type="button" class="goal-depends-icon${goal.dependsOn ? ' active' : ''}" title="Set dependency">🔗</button>
+          ${openDependsPickerId === goal.id ? `
+            <div class="goal-visible-panel">
+              <label class="goal-visible-option"><input type="radio" name="dep-${goal.id}" class="goal-depends-radio" value="" ${!goal.dependsOn ? 'checked' : ''}> — nothing —</label>
+              ${depOptions.map(o=>{
+                const isTechOption = (topic.techGoals||[]).includes(o);
+                return `<label class="goal-visible-option"><input type="radio" name="dep-${goal.id}" class="goal-depends-radio" value="${o.id}" ${o.id===goal.dependsOn ? 'checked' : ''}> [${isTechOption ? 'Tech' : 'Commercial'}] ${escapeHtml(o.text || 'Untitled goal')}</label>`;
+              }).join('')}
+            </div>` : ''}
+          ${blocked
+            ? `<span class="goal-blocked-tag" title="${escapeHtml(depGoal ? (depGoal.text||'Untitled goal') : '')}">⏳ Waiting on: ${escapeHtml(depGoal ? (depGoal.text||'Untitled goal') : '')}</span>`
+            : (depGoal ? `<span class="goal-depends-caption" title="${escapeHtml(depGoal.text||'Untitled goal')}">🔗 Depends on: ${escapeHtml(depGoal.text||'Untitled goal')} (done)</span>` : '')}
         </div>
       ` : ''}
     `;
@@ -2131,10 +2139,20 @@ function renderGoalSection(title, list, topic, currentProjectId){
       goal.status = GOAL_STATUS_ORDER[(GOAL_STATUS_ORDER.indexOf(goal.status)+1) % GOAL_STATUS_ORDER.length];
       render(); scheduleSave();
     });
-    const dependsSelect = li.querySelector('.goal-depends-select');
-    if(dependsSelect){
-      dependsSelect.addEventListener('change', e=>{ goal.dependsOn = e.target.value; render(); scheduleSave(); });
+    const dependsIcon = li.querySelector('.goal-depends-icon');
+    if(dependsIcon){
+      dependsIcon.addEventListener('click', ()=>{
+        openDependsPickerId = (openDependsPickerId === goal.id) ? null : goal.id;
+        render();
+      });
     }
+    li.querySelectorAll('.goal-depends-radio').forEach(radio=>{
+      radio.addEventListener('change', e=>{
+        goal.dependsOn = e.target.value;
+        openDependsPickerId = null;
+        render(); scheduleSave();
+      });
+    });
     const toggleBtn = li.querySelector('.goal-visible-toggle');
     if(toggleBtn){
       toggleBtn.addEventListener('click', ()=>{
