@@ -391,13 +391,6 @@
   .rm-btn{ opacity:0; cursor:pointer; color:#b9c6bd; font-size:15px; line-height:1; padding:2px 4px; border-radius:4px; flex-shrink:0;}
   .goal-list li:hover .rm-btn, .team-row:hover .rm-btn{ opacity:1; }
   .rm-btn:hover{ color:var(--status-off); background:var(--status-off-bg); }
-  .goal-link-row{ display:flex; align-items:center; gap:6px; padding-left:14px; }
-  .goal-link-label{ font-family:'JetBrains Mono',monospace; font-size:10px; text-transform:uppercase; letter-spacing:0.4px; color:#8a9b90; flex-shrink:0; }
-  .goal-link-select{
-    font-family:'Inter',sans-serif; font-size:11.5px; color:#4c5c52; background:#fff; border:1px solid var(--line-soft);
-    border-radius:12px; padding:2px 8px; max-width:220px; outline:none; cursor:pointer;
-  }
-  .goal-link-select:hover{ border-color:#5f7a68; }
   .goal-visible-caption{
     font-size:11px; color:#8a9b90; padding-left:14px; font-style:italic;
   }
@@ -1333,9 +1326,7 @@ function renderGoalsTable(title, field, kind, topicsToShow){
       const overdue = g.date && g.date < todayStr();
       const row = document.createElement('div');
       row.className = 'goals-table-row';
-      const isTech = kind === 'tech';
-      const linkedGoal = (isTech && g.linksTo) ? (topic.commercialGoals||[]).find(cg=>cg.id===g.linksTo) : null;
-      const visIds = effectiveGoalProjectIds(g, topic, isTech);
+      const visIds = effectiveGoalProjectIds(g);
       const appliesToAll = visIds.length === 0;
       const topicProjects = projectsInTopic(topic.id);
       const appliesLabel = appliesToAll
@@ -1345,7 +1336,6 @@ function renderGoalsTable(title, field, kind, topicsToShow){
         <span class="goals-page-date${overdue ? ' overdue' : ''}">${g.date ? fmtDate(g.date) : 'No date'}</span>
         <span class="goals-page-text">
           ${escapeHtml(g.text || 'Untitled goal')}
-          ${linkedGoal ? `<span class="goals-page-link">↳ responds to: ${escapeHtml(linkedGoal.text || 'Untitled goal')}</span>` : ''}
           ${topicProjects.length > 1 ? `<span class="goals-page-link">Relevant to: ${escapeHtml(appliesLabel)}</span>` : ''}
         </span>
       `;
@@ -1977,8 +1967,8 @@ function renderProject(p){
   const twoCol = document.createElement('div');
   twoCol.className = 'two-col';
   if(topic){
-    twoCol.appendChild(renderGoalSection(`Key tech goals`, topic.techGoals, topic, topic.commercialGoals, p.id));
-    twoCol.appendChild(renderGoalSection(`Key commercial goals`, topic.commercialGoals, topic, null, p.id));
+    twoCol.appendChild(renderGoalSection(`Key tech goals`, topic.techGoals, topic, p.id));
+    twoCol.appendChild(renderGoalSection(`Key commercial goals`, topic.commercialGoals, topic, p.id));
   }
   wrap.appendChild(twoCol);
 
@@ -2005,8 +1995,7 @@ function renderProject(p){
 
 let openGoalPickerId = null; // which goal's "visible on" picker is currently expanded
 
-function renderGoalSection(title, list, topic, linkOptions, currentProjectId){
-  const isTech = !!linkOptions;
+function renderGoalSection(title, list, topic, currentProjectId){
   const sec = document.createElement('div');
   sec.className = 'section';
   sec.innerHTML = `<div class="section-head"><div class="section-title"><span class="ico"></span>${title}</div>${topic ? `<span class="shared-badge" title="Editing here can update it wherever else this goal applies">Shared · ${escapeHtml(topic.label)}</span>` : ''}</div>`;
@@ -2014,26 +2003,15 @@ function renderGoalSection(title, list, topic, linkOptions, currentProjectId){
   ul.className = 'goal-list';
   const topicProjects = topic ? projectsInTopic(topic.id) : [];
   const visible = currentProjectId
-    ? list.filter(g=> goalAppliesToProject(effectiveGoalProjectIds(g, topic, isTech), currentProjectId))
+    ? list.filter(g=> goalAppliesToProject(effectiveGoalProjectIds(g), currentProjectId))
     : list;
 
   visible.forEach(goal=>{
     const li = document.createElement('li');
-    const visIds = effectiveGoalProjectIds(goal, topic, isTech);
+    const visIds = effectiveGoalProjectIds(goal);
     const appliesToAll = visIds.length === 0;
     const visLabel = appliesToAll ? 'All projects' : (topicProjects.filter(p=>visIds.includes(p.id)).map(p=>p.name).join(', ') || 'All projects');
 
-    const linkRow = linkOptions
-      ? `<div class="goal-link-row">
-          <span class="goal-link-label">Responds to</span>
-          <select class="goal-link-select">
-            <option value="">— not linked —</option>
-            ${linkOptions.map(o=>`<option value="${o.id}" ${o.id===goal.linksTo ? 'selected' : ''}>${escapeHtml(o.text || 'Untitled goal')}</option>`).join('')}
-          </select>
-        </div>`
-      : '';
-
-    // Both goal types get the same editable relevance picker now.
     const visibilityBlock = (topicProjects.length > 1)
       ? `<div class="goal-visible-picker">
           <button type="button" class="goal-visible-toggle">Relevant to: ${escapeHtml(visLabel)} ▾</button>
@@ -2053,7 +2031,6 @@ function renderGoalSection(title, list, topic, linkOptions, currentProjectId){
         <input type="date" class="goal-date" value="${escapeHtml(goal.date||'')}">
         <span class="rm-btn">×</span>
       </div>
-      ${linkRow}
       ${visibilityBlock}
     `;
     li.querySelector('.goal-text').addEventListener('input', e=>{ goal.text = e.target.textContent; scheduleSave(); });
@@ -2063,10 +2040,6 @@ function renderGoalSection(title, list, topic, linkOptions, currentProjectId){
       if(idx > -1) list.splice(idx,1);
       render(); scheduleSave();
     };
-    const linkSelect = li.querySelector('.goal-link-select');
-    if(linkSelect){
-      linkSelect.addEventListener('change', e=>{ goal.linksTo = e.target.value; scheduleSave(); });
-    }
     const toggleBtn = li.querySelector('.goal-visible-toggle');
     if(toggleBtn){
       toggleBtn.addEventListener('click', ()=>{
