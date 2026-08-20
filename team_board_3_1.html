@@ -418,24 +418,21 @@
   .rm-btn{ opacity:0; cursor:pointer; color:#b9c6bd; font-size:15px; line-height:1; padding:2px 4px; border-radius:4px; flex-shrink:0;}
   .goal-list li:hover .rm-btn, .team-row:hover .rm-btn{ opacity:1; }
   .rm-btn:hover{ color:var(--status-off); background:var(--status-off-bg); }
-  .goal-visible-caption{
-    font-size:11px; color:#8a9b90; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:280px;
-  }
   .goal-visible-picker{ position:relative; display:flex; align-items:center; gap:7px; }
-  .goal-visible-icon{
-    font-size:12px; background:none; border:1px solid var(--line-soft); border-radius:10px; padding:2px 7px;
-    cursor:pointer; color:#b9c6bd; flex-shrink:0; line-height:1.4;
-  }
-  .goal-visible-icon:hover{ border-color:#5f7a68; }
-  .goal-visible-icon.active{ color:#5f7a68; border-color:#5f7a68; background:#f6f4ee; }
   .goal-visible-panel{
     position:absolute; top:26px; left:0; z-index:20; background:#fff; border:1px solid var(--line-soft);
-    border-radius:10px; padding:8px; box-shadow:0 6px 18px rgba(0,0,0,0.1); min-width:180px;
+    border-radius:10px; padding:8px; box-shadow:0 6px 18px rgba(0,0,0,0.1); min-width:220px; max-width:280px;
   }
   .goal-visible-option{
     display:flex; align-items:center; gap:7px; font-size:12.5px; color:#2b3c32; padding:4px 4px; cursor:pointer; border-radius:5px;
   }
   .goal-visible-option:hover{ background:#f6f4ee; }
+  .goal-depends-search{
+    width:100%; box-sizing:border-box; font-family:'Inter',sans-serif; font-size:12px; color:#2b3c32;
+    border:1px solid var(--line-soft); border-radius:8px; padding:5px 8px; margin-bottom:6px; outline:none;
+  }
+  .goal-depends-search:focus{ border-color:var(--accent); }
+  .goal-depends-option-list{ max-height:220px; overflow-y:auto; }
   .goal-visible-done{
     width:100%; margin-top:4px; background:var(--accent); color:#0f1e16; border:none; font-family:'Inter',sans-serif;
     font-weight:600; font-size:11.5px; padding:5px 0; border-radius:8px; cursor:pointer;
@@ -745,14 +742,6 @@ function topicForFolder(folderId){
 function topicForProject(p){ return topicForFolder(p.folder); }
 function projectsInTopic(topicId){
   return data.projects.filter(p=>{ const t = topicForProject(p); return t && t.id === topicId; });
-}
-// Every goal — tech or commercial — carries its own project scope directly now.
-function effectiveGoalProjectIds(goal, topic, isTech){
-  return goal.projectIds || [];
-}
-// A goal with no explicit project scope applies to every project in its topic (the default).
-function goalAppliesToProject(projectIds, projectId){
-  return !projectIds || projectIds.length === 0 || projectIds.includes(projectId);
 }
 const GOAL_STATUS_LABELS = { not_started: 'Not started', in_progress: 'In progress', done: 'Done' };
 const GOAL_STATUS_ORDER = ['not_started', 'in_progress', 'done'];
@@ -1408,12 +1397,6 @@ function renderGoalsTable(title, field, kind, topicsToShow){
       const overdue = g.date && g.date < todayStr();
       const row = document.createElement('div');
       row.className = 'goals-table-row';
-      const visIds = effectiveGoalProjectIds(g);
-      const appliesToAll = visIds.length === 0;
-      const topicProjects = projectsInTopic(topic.id);
-      const appliesLabel = appliesToAll
-        ? 'All projects'
-        : (topicProjects.filter(p=>visIds.includes(p.id)).map(p=>p.name).join(', ') || 'All projects');
       const blocked = isGoalBlocked(g, topic);
       const waitingOn = blocked ? unfinishedDependencies(g, topic).map(d=>d.text||'Untitled goal').join(', ') : '';
       row.innerHTML = `
@@ -1422,7 +1405,6 @@ function renderGoalsTable(title, field, kind, topicsToShow){
           ${escapeHtml(g.text || 'Untitled goal')}
           <span class="goals-page-status ${g.status||'not_started'}">${GOAL_STATUS_LABELS[g.status||'not_started']}</span>
           ${blocked ? `<span class="goals-page-blocked">⏳ Waiting on: ${escapeHtml(waitingOn)}</span>` : ''}
-          ${topicProjects.length > 1 ? `<span class="goals-page-link">Relevant to: ${escapeHtml(appliesLabel)}</span>` : ''}
         </span>
       `;
       row.onclick = ()=>{ activeFolder = 'topic:'+topic.id; activeTab = 'summary'; render(); };
@@ -1608,19 +1590,19 @@ function renderTimeline(){
     heading.innerHTML = `<span class="fdot" style="background:${topicColor(topic.id)}"></span>${escapeHtml(topic.label)}`;
     body.appendChild(heading);
 
-    // Shared goals (apply to every project in this topic) — one row per goal
-    const sharedGoals = [
-      ...(topic.techGoals||[]).filter(g=>effectiveGoalProjectIds(g).length===0).map(g=>({ goal:g, kind:'tech', label:`Tech · ${g.text||'Untitled goal'}` })),
-      ...(topic.commercialGoals||[]).filter(g=>(!g.projectIds || g.projectIds.length===0)).map(g=>({ goal:g, kind:'commercial', label:`Commercial · ${g.text||'Untitled goal'}` }))
+    // Goals — always topic-wide now, one row per goal
+    const topicGoals = [
+      ...(topic.techGoals||[]).map(g=>({ goal:g, kind:'tech', label:`Tech · ${g.text||'Untitled goal'}` })),
+      ...(topic.commercialGoals||[]).map(g=>({ goal:g, kind:'commercial', label:`Commercial · ${g.text||'Untitled goal'}` }))
     ].filter(x=>x.goal.date).sort((a,b)=> a.goal.date.localeCompare(b.goal.date));
 
-    if(sharedGoals.length){
+    if(topicGoals.length){
       const subHead = document.createElement('div');
       subHead.className = 'timeline-project-heading';
-      subHead.textContent = `${topic.label} goals (shared)`;
+      subHead.textContent = `${topic.label} goals`;
       subHead.onclick = ()=>{ activeFolder = 'topic:'+topic.id; activeTab = 'summary'; render(); };
       body.appendChild(subHead);
-      sharedGoals.forEach(({goal, kind, label})=>{
+      topicGoals.forEach(({goal, kind, label})=>{
         addItemRow(label, goal.date, kind, isGoalBlocked(goal, topic),
           ()=>{ activeFolder = 'topic:'+topic.id; activeTab = 'summary'; render(); },
           latestDependencyDate(goal, topic));
@@ -1641,14 +1623,6 @@ function renderTimeline(){
         addItemRow('Key date', p.keyDate, 'keydate', false, openClick);
         rowsBefore = true;
       }
-      const projectGoals = [
-        ...(topic.techGoals||[]).filter(g=>{ const v = effectiveGoalProjectIds(g); return v.length>0 && v.includes(p.id); }).map(g=>({ goal:g, kind:'tech', label:`Tech · ${g.text||'Untitled goal'}` })),
-        ...(topic.commercialGoals||[]).filter(g=>g.projectIds && g.projectIds.length>0 && g.projectIds.includes(p.id)).map(g=>({ goal:g, kind:'commercial', label:`Commercial · ${g.text||'Untitled goal'}` }))
-      ].filter(x=>x.goal.date).sort((a,b)=> a.goal.date.localeCompare(b.goal.date));
-      projectGoals.forEach(({goal, kind, label})=>{
-        addItemRow(label, goal.date, kind, isGoalBlocked(goal, topic), openClick, latestDependencyDate(goal, topic));
-        rowsBefore = true;
-      });
 
       const taskRows = [];
       p.team.forEach(t=> (t.tasks||[]).forEach(task=>{ if(!task.done && task.date) taskRows.push({ t, task }); }));
@@ -1779,18 +1753,13 @@ function buildAgendaForTopic(topicId){
   const keyDates = [];
   const capacity = {};
 
-  // Topic-level goals — each pushed once (not per project), labelled with which project(s) they apply to
+  // Topic-level goals — each pushed once (not per project)
   if(topic){
     [['Tech goal', topic.techGoals, 'tech'], ['Commercial goal', topic.commercialGoals, 'commercial']].forEach(([kindLabel, list, kind])=>{
       (list||[]).forEach(g=>{
         if(!g.date) return;
         const label = `${kindLabel}: ${g.text || 'Untitled'}${isGoalBlocked(g, topic) ? ' (waiting on another goal)' : ''}`;
-        const visIds = effectiveGoalProjectIds(g);
-        let scopeLabel = `${topic.label} — all projects`;
-        if(visIds.length > 0){
-          const names = visIds.map(pid=>{ const proj = data.projects.find(x=>x.id===pid); return proj ? proj.name : null; }).filter(Boolean);
-          if(names.length) scopeLabel = names.join(', ');
-        }
+        const scopeLabel = topic.label;
         if(g.date >= today) keyDates.push({ projectName: scopeLabel, label, date:g.date, kind });
         if(isWithinNextDays(g.date, 14)) upcoming.push({ projectName: scopeLabel, label, date:g.date, kind });
       });
@@ -2126,7 +2095,6 @@ function renderProject(p){
   return wrap;
 }
 
-let openGoalPickerId = null; // which goal's "visible on" picker is currently expanded
 let openDependsPickerId = null; // which goal's "depends on" picker is currently expanded
 
 function renderGoalSection(title, list, topic, currentProjectId){
@@ -2135,38 +2103,26 @@ function renderGoalSection(title, list, topic, currentProjectId){
   sec.innerHTML = `<div class="section-head"><div class="section-title"><span class="ico"></span>${title}</div>${topic ? `<span class="shared-badge" title="Editing here can update it wherever else this goal applies">Shared · ${escapeHtml(topic.label)}</span>` : ''}</div>`;
   const ul = document.createElement('ul');
   ul.className = 'goal-list';
-  const topicProjects = topic ? projectsInTopic(topic.id) : [];
-  const visible = currentProjectId
-    ? list.filter(g=> goalAppliesToProject(effectiveGoalProjectIds(g), currentProjectId))
-    : list;
+  const visible = list;
 
   visible.forEach(goal=>{
     const li = document.createElement('li');
-    const visIds = effectiveGoalProjectIds(goal);
-    const appliesToAll = visIds.length === 0;
-    const visLabel = appliesToAll ? 'All projects' : (topicProjects.filter(p=>visIds.includes(p.id)).map(p=>p.name).join(', ') || 'All projects');
     if(!goal.status) goal.status = 'not_started';
     if(!Array.isArray(goal.dependsOnIds)) goal.dependsOnIds = [];
     const blocked = isGoalBlocked(goal, topic);
     const depGoals = dependencyGoals(goal, topic);
     const waitingOnGoals = unfinishedDependencies(goal, topic);
 
-    const visibilityBlock = (topicProjects.length > 1)
-      ? `<div class="goal-visible-picker">
-          <button type="button" class="goal-visible-icon${!appliesToAll ? ' active' : ''}" title="Relevant to: ${escapeHtml(visLabel)}">📍</button>
-          ${openGoalPickerId === goal.id ? `
-            <div class="goal-visible-panel">
-              <label class="goal-visible-option"><input type="checkbox" class="goal-visible-all" ${appliesToAll ? 'checked' : ''}> All projects</label>
-              ${topicProjects.map(p=>`<label class="goal-visible-option"><input type="checkbox" class="goal-visible-one" data-pid="${p.id}" ${visIds.includes(p.id) ? 'checked' : ''}> ${escapeHtml(p.name)}</label>`).join('')}
-              <button type="button" class="goal-visible-done">Done</button>
-            </div>` : ''}
-          ${!appliesToAll ? `<span class="goal-visible-caption" title="${escapeHtml(visLabel)}">${escapeHtml(visLabel)}</span>` : ''}
-        </div>`
-      : '';
-
     // Depends-on options: every other goal in the topic (tech + commercial), excluding itself and
     // anything that already depends on this goal (a simple guard against an immediate 2-way cycle).
-    const depOptions = topic ? allTopicGoals(topic).filter(g=> g.id !== goal.id && !(Array.isArray(g.dependsOnIds) && g.dependsOnIds.includes(goal.id))) : [];
+    // Sorted Tech-then-Commercial, alphabetically within each, so the list is easier to scan.
+    const depOptions = topic ? allTopicGoals(topic)
+      .filter(g=> g.id !== goal.id && !(Array.isArray(g.dependsOnIds) && g.dependsOnIds.includes(goal.id)))
+      .sort((a,b)=>{
+        const aTech = (topic.techGoals||[]).includes(a), bTech = (topic.techGoals||[]).includes(b);
+        if(aTech !== bTech) return aTech ? -1 : 1;
+        return (a.text||'').localeCompare(b.text||'');
+      }) : [];
     const dependsTitle = depGoals.length ? `Depends on: ${depGoals.map(d=>d.text||'Untitled goal').join(', ')}` : 'Set dependencies';
 
     li.innerHTML = `
@@ -2178,16 +2134,21 @@ function renderGoalSection(title, list, topic, currentProjectId){
       </div>
       <div class="goal-controls-row">
         <button type="button" class="goal-status-pill ${goal.status}">${GOAL_STATUS_LABELS[goal.status]}</button>
-        ${visibilityBlock}
         ${topic ? `
           <div class="goal-visible-picker">
             <button type="button" class="goal-depends-icon${goal.dependsOnIds.length ? ' active' : ''}" title="${escapeHtml(dependsTitle)}">🔗</button>
             ${openDependsPickerId === goal.id ? `
               <div class="goal-visible-panel">
-                ${depOptions.length === 0 ? `<div class="goal-visible-option" style="cursor:default;">No other goals yet</div>` : depOptions.map(o=>{
-                  const isTechOption = (topic.techGoals||[]).includes(o);
-                  return `<label class="goal-visible-option"><input type="checkbox" class="goal-depends-check" data-gid="${o.id}" ${goal.dependsOnIds.includes(o.id) ? 'checked' : ''}> [${isTechOption ? 'Tech' : 'Commercial'}] ${escapeHtml(o.text || 'Untitled goal')}</label>`;
-                }).join('')}
+                ${depOptions.length === 0 ? `<div class="goal-visible-option" style="cursor:default;">No other goals yet</div>` : `
+                  ${depOptions.length > 5 ? `<input type="text" class="goal-depends-search" placeholder="Search goals...">` : ''}
+                  <div class="goal-depends-option-list">
+                    ${depOptions.map(o=>{
+                      const isTechOption = (topic.techGoals||[]).includes(o);
+                      const optText = `[${isTechOption ? 'Tech' : 'Commercial'}] ${o.text || 'Untitled goal'}`;
+                      return `<label class="goal-visible-option" data-search="${escapeHtml(optText.toLowerCase())}"><input type="checkbox" class="goal-depends-check" data-gid="${o.id}" ${goal.dependsOnIds.includes(o.id) ? 'checked' : ''}> ${escapeHtml(optText)}</label>`;
+                    }).join('')}
+                  </div>
+                `}
                 <button type="button" class="goal-depends-panel-done">Done</button>
               </div>` : ''}
           </div>
@@ -2211,7 +2172,24 @@ function renderGoalSection(title, list, topic, currentProjectId){
       dependsIcon.addEventListener('click', ()=>{
         openDependsPickerId = (openDependsPickerId === goal.id) ? null : goal.id;
         render();
+        if(openDependsPickerId === goal.id){
+          requestAnimationFrame(()=>{
+            const box = document.querySelector('.goal-depends-search');
+            if(box) box.focus();
+          });
+        }
       });
+    }
+    const dependsSearch = li.querySelector('.goal-depends-search');
+    if(dependsSearch){
+      // Filters the already-rendered option list directly — no re-render per keystroke, so focus/typing isn't interrupted.
+      dependsSearch.addEventListener('input', e=>{
+        const q = e.target.value.trim().toLowerCase();
+        li.querySelectorAll('.goal-visible-option').forEach(opt=>{
+          opt.style.display = opt.dataset.search.includes(q) ? '' : 'none';
+        });
+      });
+      dependsSearch.addEventListener('click', e=> e.stopPropagation());
     }
     li.querySelectorAll('.goal-depends-check').forEach(cb=>{
       cb.addEventListener('change', e=>{
@@ -2229,35 +2207,6 @@ function renderGoalSection(title, list, topic, currentProjectId){
     if(dependsDoneBtn){
       dependsDoneBtn.addEventListener('click', ()=>{ openDependsPickerId = null; render(); });
     }
-    const toggleBtn = li.querySelector('.goal-visible-icon');
-    if(toggleBtn){
-      toggleBtn.addEventListener('click', ()=>{
-        openGoalPickerId = (openGoalPickerId === goal.id) ? null : goal.id;
-        render();
-      });
-    }
-    const allCheckbox = li.querySelector('.goal-visible-all');
-    if(allCheckbox){
-      allCheckbox.addEventListener('change', e=>{
-        if(e.target.checked){ goal.projectIds = []; render(); scheduleSave(); }
-      });
-    }
-    li.querySelectorAll('.goal-visible-one').forEach(cb=>{
-      cb.addEventListener('change', e=>{
-        const pid = e.target.dataset.pid;
-        if(!Array.isArray(goal.projectIds)) goal.projectIds = [];
-        if(e.target.checked){
-          if(!goal.projectIds.includes(pid)) goal.projectIds.push(pid);
-        } else {
-          goal.projectIds = goal.projectIds.filter(id=>id!==pid);
-        }
-        render(); scheduleSave();
-      });
-    });
-    const doneBtn = li.querySelector('.goal-visible-done');
-    if(doneBtn){
-      doneBtn.addEventListener('click', ()=>{ openGoalPickerId = null; render(); });
-    }
     ul.appendChild(li);
   });
   sec.appendChild(ul);
@@ -2265,7 +2214,7 @@ function renderGoalSection(title, list, topic, currentProjectId){
   add.className = 'add-line';
   add.textContent = '+ add goal';
   add.onclick = ()=>{
-    list.push({ id: uid('g'), text:'New goal', date:'', linksTo:'', projectIds: currentProjectId ? [currentProjectId] : [], status:'not_started', dependsOnIds:[] });
+    list.push({ id: uid('g'), text:'New goal', date:'', linksTo:'', status:'not_started', dependsOnIds:[] });
     render(); scheduleSave();
   };
   sec.appendChild(add);
