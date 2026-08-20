@@ -448,16 +448,12 @@
   .goal-status-pill.not_started{ background:#eef0ee; color:#8a9b90; }
   .goal-status-pill.in_progress{ background:var(--status-risk-bg); color:var(--status-risk); }
   .goal-status-pill.done{ background:var(--status-on-bg); color:var(--status-on); }
-  .goal-depends-row{ display:flex; align-items:center; gap:7px; padding-left:14px; position:relative; }
   .goal-depends-icon{
     font-size:12px; background:none; border:1px solid var(--line-soft); border-radius:10px; padding:2px 7px;
     cursor:pointer; color:#b9c6bd; flex-shrink:0; line-height:1.4;
   }
   .goal-depends-icon:hover{ border-color:#5f7a68; }
   .goal-depends-icon.active{ color:#5f7a68; border-color:#5f7a68; background:#f6f4ee; }
-  .goal-depends-caption{
-    font-size:11px; color:#8a9b90; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:280px;
-  }
   .goal-blocked-tag{
     font-family:'Inter',sans-serif; font-size:11px; font-weight:500; text-transform:none; letter-spacing:normal;
     color:#8a6a2f; background:#faf1de; padding:3px 9px; border-radius:12px; flex-shrink:0;
@@ -2157,20 +2153,21 @@ function renderGoalSection(title, list, topic, currentProjectId){
 
     const visibilityBlock = (topicProjects.length > 1)
       ? `<div class="goal-visible-picker">
-          <button type="button" class="goal-visible-icon${!appliesToAll ? ' active' : ''}" title="Set which projects this is relevant to">📍</button>
+          <button type="button" class="goal-visible-icon${!appliesToAll ? ' active' : ''}" title="Relevant to: ${escapeHtml(visLabel)}">📍</button>
           ${openGoalPickerId === goal.id ? `
             <div class="goal-visible-panel">
               <label class="goal-visible-option"><input type="checkbox" class="goal-visible-all" ${appliesToAll ? 'checked' : ''}> All projects</label>
               ${topicProjects.map(p=>`<label class="goal-visible-option"><input type="checkbox" class="goal-visible-one" data-pid="${p.id}" ${visIds.includes(p.id) ? 'checked' : ''}> ${escapeHtml(p.name)}</label>`).join('')}
               <button type="button" class="goal-visible-done">Done</button>
             </div>` : ''}
-          <span class="goal-visible-caption" title="${escapeHtml(visLabel)}">Relevant to: ${escapeHtml(visLabel)}</span>
+          ${!appliesToAll ? `<span class="goal-visible-caption" title="${escapeHtml(visLabel)}">${escapeHtml(visLabel)}</span>` : ''}
         </div>`
       : '';
 
     // Depends-on options: every other goal in the topic (tech + commercial), excluding itself and
     // anything that already depends on this goal (a simple guard against an immediate 2-way cycle).
     const depOptions = topic ? allTopicGoals(topic).filter(g=> g.id !== goal.id && !(Array.isArray(g.dependsOnIds) && g.dependsOnIds.includes(goal.id))) : [];
+    const dependsTitle = depGoals.length ? `Depends on: ${depGoals.map(d=>d.text||'Untitled goal').join(', ')}` : 'Set dependencies';
 
     li.innerHTML = `
       <div class="goal-row-main">
@@ -2182,23 +2179,21 @@ function renderGoalSection(title, list, topic, currentProjectId){
       <div class="goal-controls-row">
         <button type="button" class="goal-status-pill ${goal.status}">${GOAL_STATUS_LABELS[goal.status]}</button>
         ${visibilityBlock}
+        ${topic ? `
+          <div class="goal-visible-picker">
+            <button type="button" class="goal-depends-icon${goal.dependsOnIds.length ? ' active' : ''}" title="${escapeHtml(dependsTitle)}">🔗</button>
+            ${openDependsPickerId === goal.id ? `
+              <div class="goal-visible-panel">
+                ${depOptions.length === 0 ? `<div class="goal-visible-option" style="cursor:default;">No other goals yet</div>` : depOptions.map(o=>{
+                  const isTechOption = (topic.techGoals||[]).includes(o);
+                  return `<label class="goal-visible-option"><input type="checkbox" class="goal-depends-check" data-gid="${o.id}" ${goal.dependsOnIds.includes(o.id) ? 'checked' : ''}> [${isTechOption ? 'Tech' : 'Commercial'}] ${escapeHtml(o.text || 'Untitled goal')}</label>`;
+                }).join('')}
+                <button type="button" class="goal-depends-panel-done">Done</button>
+              </div>` : ''}
+          </div>
+        ` : ''}
+        ${blocked ? `<span class="goal-blocked-tag" title="${escapeHtml(waitingOnGoals.map(d=>d.text||'Untitled goal').join(', '))}">⏳ Waiting on: ${escapeHtml(waitingOnGoals.map(d=>d.text||'Untitled goal').join(', '))}</span>` : ''}
       </div>
-      ${topic ? `
-        <div class="goal-depends-row">
-          <button type="button" class="goal-depends-icon${goal.dependsOnIds.length ? ' active' : ''}" title="Set dependencies">🔗</button>
-          ${openDependsPickerId === goal.id ? `
-            <div class="goal-visible-panel">
-              ${depOptions.length === 0 ? `<div class="goal-visible-option" style="cursor:default;">No other goals yet</div>` : depOptions.map(o=>{
-                const isTechOption = (topic.techGoals||[]).includes(o);
-                return `<label class="goal-visible-option"><input type="checkbox" class="goal-depends-check" data-gid="${o.id}" ${goal.dependsOnIds.includes(o.id) ? 'checked' : ''}> [${isTechOption ? 'Tech' : 'Commercial'}] ${escapeHtml(o.text || 'Untitled goal')}</label>`;
-              }).join('')}
-              <button type="button" class="goal-depends-panel-done">Done</button>
-            </div>` : ''}
-          ${blocked
-            ? `<span class="goal-blocked-tag" title="${escapeHtml(waitingOnGoals.map(d=>d.text||'Untitled goal').join(', '))}">⏳ Waiting on: ${escapeHtml(waitingOnGoals.map(d=>d.text||'Untitled goal').join(', '))}</span>`
-            : (depGoals.length ? `<span class="goal-depends-caption" title="${escapeHtml(depGoals.map(d=>d.text||'Untitled goal').join(', '))}">🔗 Depends on: ${escapeHtml(depGoals.map(d=>d.text||'Untitled goal').join(', '))} (done)</span>` : '')}
-        </div>
-      ` : ''}
     `;
     li.querySelector('.goal-text').addEventListener('input', e=>{ goal.text = e.target.textContent; scheduleSave(); });
     li.querySelector('.goal-date').addEventListener('change', e=>{ goal.date = e.target.value; scheduleSave(); });
