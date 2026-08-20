@@ -911,6 +911,10 @@ async function loadData(){
     if(!Array.isArray(p.risks)) p.risks = [];
     if(!Array.isArray(p.specs)) p.specs = [];
     p.specs.forEach(s=>{ if(!s.id) s.id = uid('sp'); if(!s.status) s.status = 'tbd'; });
+    if(!Array.isArray(p.ownTechGoals)) p.ownTechGoals = [];
+    p.ownTechGoals.forEach(g=>{ if(!g.id) g.id = uid('g'); if(!g.status) g.status = 'not_started'; if(!Array.isArray(g.dependsOnIds)) g.dependsOnIds = []; });
+    if(!Array.isArray(p.ownCommercialGoals)) p.ownCommercialGoals = [];
+    p.ownCommercialGoals.forEach(g=>{ if(!g.id) g.id = uid('g'); if(!g.status) g.status = 'not_started'; if(!Array.isArray(g.dependsOnIds)) g.dependsOnIds = []; });
     p.team.forEach(t=>{
       if(!Array.isArray(t.tasks)){
         t.tasks = t.working ? [{ text: t.working, done: false, date: '' }] : [];
@@ -918,6 +922,26 @@ async function loadData(){
       t.tasks.forEach(task=>{ if(task.date === undefined) task.date = ''; if(task.recurring === undefined) task.recurring = false; if(task.completedAt === undefined) task.completedAt = ''; });
     });
   });
+  let justMigratedSharedGoals = false;
+  if(!data.migratedSharedGoalsToProjects){
+    justMigratedSharedGoals = true;
+    data.topics.forEach(t=>{
+      const projectsHere = data.projects.filter(p=>{ const f = data.folders.find(x=>x.id===p.folder); return f && f.topicId===t.id; });
+      projectsHere.forEach(p=>{
+        (t.techGoals||[]).forEach(g=>{
+          if(g.text && !p.ownTechGoals.some(x=>x.text===g.text && x.date===g.date)){
+            p.ownTechGoals.push({ id: uid('g'), text: g.text, date: g.date||'', status: g.status||'not_started', dependsOnIds: [] });
+          }
+        });
+        (t.commercialGoals||[]).forEach(g=>{
+          if(g.text && !p.ownCommercialGoals.some(x=>x.text===g.text && x.date===g.date)){
+            p.ownCommercialGoals.push({ id: uid('g'), text: g.text, date: g.date||'', status: g.status||'not_started', dependsOnIds: [] });
+          }
+        });
+      });
+    });
+    data.migratedSharedGoalsToProjects = true;
+  }
   render();
   lastSavedSnapshot = JSON.parse(JSON.stringify(data));
   undoStack = [];
@@ -926,6 +950,9 @@ async function loadData(){
   if(justMigratedTopics){
     // Lock in this migration immediately so a teammate opening the app moments later
     // loads the already-migrated version instead of independently re-migrating their own copy.
+    persist();
+  }
+  if(justMigratedSharedGoals){
     persist();
   }
 }
@@ -1350,38 +1377,31 @@ function renderGoalsPage(){
       <div>
         <div class="page-eyebrow">Overview</div>
         <h1 class="page-title">All goals, by date</h1>
-        <div class="page-sub">Tech and commercial goals are shared business goals per topic — the same list appears on every project under it. Click a goal to jump to that topic.</div>
+        <div class="page-sub">Each project's own tech and commercial goals, grouped by project. Click a goal to open its project.</div>
       </div>
     </div>
   `;
 
-  let topicsToShow;
-  if(activeFolder === 'all'){
-    topicsToShow = data.topics;
-  } else if(typeof activeFolder === 'string' && activeFolder.startsWith('topic:')){
-    topicsToShow = data.topics.filter(t=>t.id===activeFolder.slice(6));
-  } else {
-    const t = topicForFolder(activeFolder);
-    topicsToShow = t ? [t] : [];
-  }
+  const projects = projectsForActiveFilter();
 
-  wrap.appendChild(renderGoalsTable('Tech goals', 'techGoals', 'tech', topicsToShow));
-  wrap.appendChild(renderGoalsTable('Commercial goals', 'commercialGoals', 'commercial', topicsToShow));
+  wrap.appendChild(renderGoalsTable('Tech goals', 'ownTechGoals', 'tech', projects));
+  wrap.appendChild(renderGoalsTable('Commercial goals', 'ownCommercialGoals', 'commercial', projects));
 
   return wrap;
 }
 
-function renderGoalsTable(title, field, kind, topicsToShow){
+function renderGoalsTable(title, field, kind, projects){
   const sec = document.createElement('div');
   sec.className = 'goals-table-section';
   sec.innerHTML = `<div class="goals-table-title">${title}</div>`;
 
   let anyGoals = false;
 
-  topicsToShow.forEach(topic=>{
-    const goals = (topic[field]||[]).filter(g=> g.text || g.date);
+  projects.forEach(p=>{
+    const goals = (p[field]||[]).filter(g=> g.text || g.date);
     if(goals.length === 0) return;
     anyGoals = true;
+    const goalScope = { id: p.id, label: p.name, techGoals: p.ownTechGoals, commercialGoals: p.ownCommercialGoals };
     const sorted = [...goals].sort((a,b)=>{
       const da = a.date || '9999-12-31', db = b.date || '9999-12-31';
       if(da !== db) return da < db ? -1 : 1;
@@ -1390,15 +1410,15 @@ function renderGoalsTable(title, field, kind, topicsToShow){
 
     const group = document.createElement('div');
     group.className = 'goals-filter-group';
-    group.innerHTML = `<div class="goals-filter-heading"><span class="fdot" style="background:${topicColor(topic.id)}"></span>${escapeHtml(topic.label)}</div>`;
+    group.innerHTML = `<div class="goals-filter-heading"><span class="fdot" style="background:${folderColor(p.folder)}"></span>${escapeHtml(p.name)}</div>`;
     const table = document.createElement('div');
     table.className = 'goals-table';
     sorted.forEach(g=>{
       const overdue = g.date && g.date < todayStr();
       const row = document.createElement('div');
       row.className = 'goals-table-row';
-      const blocked = isGoalBlocked(g, topic);
-      const waitingOn = blocked ? unfinishedDependencies(g, topic).map(d=>d.text||'Untitled goal').join(', ') : '';
+      const blocked = isGoalBlocked(g, goalScope);
+      const waitingOn = blocked ? unfinishedDependencies(g, goalScope).map(d=>d.text||'Untitled goal').join(', ') : '';
       row.innerHTML = `
         <span class="goals-page-date${overdue ? ' overdue' : ''}">${g.date ? fmtDate(g.date) : 'No date'}</span>
         <span class="goals-page-text">
@@ -1407,7 +1427,7 @@ function renderGoalsTable(title, field, kind, topicsToShow){
           ${blocked ? `<span class="goals-page-blocked">⏳ Waiting on: ${escapeHtml(waitingOn)}</span>` : ''}
         </span>
       `;
-      row.onclick = ()=>{ activeFolder = 'topic:'+topic.id; activeTab = 'summary'; render(); };
+      row.onclick = ()=>{ activeTab = p.id; render(); };
       table.appendChild(row);
     });
     group.appendChild(table);
@@ -1590,25 +1610,6 @@ function renderTimeline(){
     heading.innerHTML = `<span class="fdot" style="background:${topicColor(topic.id)}"></span>${escapeHtml(topic.label)}`;
     body.appendChild(heading);
 
-    // Goals — always topic-wide now, one row per goal
-    const topicGoals = [
-      ...(topic.techGoals||[]).map(g=>({ goal:g, kind:'tech', label:`Tech · ${g.text||'Untitled goal'}` })),
-      ...(topic.commercialGoals||[]).map(g=>({ goal:g, kind:'commercial', label:`Commercial · ${g.text||'Untitled goal'}` }))
-    ].filter(x=>x.goal.date).sort((a,b)=> a.goal.date.localeCompare(b.goal.date));
-
-    if(topicGoals.length){
-      const subHead = document.createElement('div');
-      subHead.className = 'timeline-project-heading';
-      subHead.textContent = `${topic.label} goals`;
-      subHead.onclick = ()=>{ activeFolder = 'topic:'+topic.id; activeTab = 'summary'; render(); };
-      body.appendChild(subHead);
-      topicGoals.forEach(({goal, kind, label})=>{
-        addItemRow(label, goal.date, kind, isGoalBlocked(goal, topic),
-          ()=>{ activeFolder = 'topic:'+topic.id; activeTab = 'summary'; render(); },
-          latestDependencyDate(goal, topic));
-      });
-    }
-
     projectsInTopic.forEach(p=>{
       const pHeading = document.createElement('div');
       pHeading.className = 'timeline-project-heading';
@@ -1623,6 +1624,16 @@ function renderTimeline(){
         addItemRow('Key date', p.keyDate, 'keydate', false, openClick);
         rowsBefore = true;
       }
+
+      const goalScope = { id: p.id, label: p.name, techGoals: p.ownTechGoals, commercialGoals: p.ownCommercialGoals };
+      const ownGoals = [
+        ...(p.ownTechGoals||[]).map(g=>({ goal:g, kind:'tech', label:`Tech · ${g.text||'Untitled goal'}` })),
+        ...(p.ownCommercialGoals||[]).map(g=>({ goal:g, kind:'commercial', label:`Commercial · ${g.text||'Untitled goal'}` }))
+      ].filter(x=>x.goal.date).sort((a,b)=> a.goal.date.localeCompare(b.goal.date));
+      ownGoals.forEach(({goal, kind, label})=>{
+        addItemRow(label, goal.date, kind, isGoalBlocked(goal, goalScope), openClick, latestDependencyDate(goal, goalScope));
+        rowsBefore = true;
+      });
 
       const taskRows = [];
       p.team.forEach(t=> (t.tasks||[]).forEach(task=>{ if(!task.done && task.date) taskRows.push({ t, task }); }));
@@ -1753,21 +1764,17 @@ function buildAgendaForTopic(topicId){
   const keyDates = [];
   const capacity = {};
 
-  // Topic-level goals — each pushed once (not per project)
-  if(topic){
-    [['Tech goal', topic.techGoals, 'tech'], ['Commercial goal', topic.commercialGoals, 'commercial']].forEach(([kindLabel, list, kind])=>{
-      (list||[]).forEach(g=>{
-        if(!g.date) return;
-        const label = `${kindLabel}: ${g.text || 'Untitled'}${isGoalBlocked(g, topic) ? ' (waiting on another goal)' : ''}`;
-        const scopeLabel = topic.label;
-        if(g.date >= today) keyDates.push({ projectName: scopeLabel, label, date:g.date, kind });
-        if(isWithinNextDays(g.date, 14)) upcoming.push({ projectName: scopeLabel, label, date:g.date, kind });
-      });
-    });
-  }
-
   projects.forEach(p=>{
     if(p.keyDate && p.keyDate >= today) keyDates.push({ projectName:p.name, label:'Key date', date:p.keyDate, kind:null });
+    const goalScope = { id: p.id, label: p.name, techGoals: p.ownTechGoals, commercialGoals: p.ownCommercialGoals };
+    [['Tech goal', p.ownTechGoals, 'tech'], ['Commercial goal', p.ownCommercialGoals, 'commercial']].forEach(([kindLabel, list, kind])=>{
+      (list||[]).forEach(g=>{
+        if(!g.date) return;
+        const label = `${kindLabel}: ${g.text || 'Untitled'}${isGoalBlocked(g, goalScope) ? ' (waiting on another goal)' : ''}`;
+        if(g.date >= today) keyDates.push({ projectName:p.name, label, date:g.date, kind });
+        if(isWithinNextDays(g.date, 14)) upcoming.push({ projectName:p.name, label, date:g.date, kind });
+      });
+    });
     p.team.forEach(t=>{
       if(!capacity[t.name]) capacity[t.name] = { open:0, overdue:0, recurring:0 };
       (t.tasks||[]).forEach(task=>{
@@ -2066,12 +2073,13 @@ function renderProject(p){
   wrap.appendChild(head);
 
   const topic = topicForProject(p);
+  // Goals are project-owned now. Wrap them in a topic-shaped object so the existing
+  // dependency-resolution helpers (which just expect .techGoals/.commercialGoals) work unchanged.
+  const goalScope = { id: p.id, label: p.name, techGoals: p.ownTechGoals, commercialGoals: p.ownCommercialGoals };
   const twoCol = document.createElement('div');
   twoCol.className = 'two-col';
-  if(topic){
-    twoCol.appendChild(renderGoalSection(`Key tech goals`, topic.techGoals, topic, p.id));
-    twoCol.appendChild(renderGoalSection(`Key commercial goals`, topic.commercialGoals, topic, p.id));
-  }
+  twoCol.appendChild(renderGoalSection('Key tech goals', p.ownTechGoals, goalScope));
+  twoCol.appendChild(renderGoalSection('Key commercial goals', p.ownCommercialGoals, goalScope));
   wrap.appendChild(twoCol);
 
   wrap.appendChild(renderSpecsSection(p));
@@ -2100,7 +2108,7 @@ let openDependsPickerId = null; // which goal's "depends on" picker is currently
 function renderGoalSection(title, list, topic, currentProjectId){
   const sec = document.createElement('div');
   sec.className = 'section';
-  sec.innerHTML = `<div class="section-head"><div class="section-title"><span class="ico"></span>${title}</div>${topic ? `<span class="shared-badge" title="Editing here can update it wherever else this goal applies">Shared · ${escapeHtml(topic.label)}</span>` : ''}</div>`;
+  sec.innerHTML = `<div class="section-head"><div class="section-title"><span class="ico"></span>${title}</div></div>`;
   const ul = document.createElement('ul');
   ul.className = 'goal-list';
   const visible = list;
