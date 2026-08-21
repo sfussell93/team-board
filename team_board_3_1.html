@@ -416,7 +416,7 @@
     border:1px solid var(--line-soft); border-radius:6px; padding:3px 6px; outline:none; flex-shrink:0;
   }
   .rm-btn{ opacity:0; cursor:pointer; color:#b9c6bd; font-size:15px; line-height:1; padding:2px 4px; border-radius:4px; flex-shrink:0;}
-  .goal-list li:hover .rm-btn, .team-row:hover .rm-btn{ opacity:1; }
+  .goal-list li:hover .rm-btn{ opacity:1; }
   .rm-btn:hover{ color:var(--status-off); background:var(--status-off-bg); }
   .goal-visible-picker{ position:relative; display:flex; align-items:center; gap:7px; }
   .goal-visible-panel{
@@ -459,12 +459,18 @@
   .add-line{ font-size:12.5px; color:#5f7a68; cursor:pointer; padding:8px 0 2px; display:flex; align-items:center; gap:6px; }
   .add-line:hover{ color:var(--accent); }
 
-  .team-row{ display:flex; align-items:flex-start; gap:12px; padding:11px 0; border-bottom:1px solid var(--line-soft); }
+  .team-row{ padding:11px 0; border-bottom:1px solid var(--line-soft); }
   .team-row:last-of-type{ border-bottom:none; }
-  .avatar-lg{ width:30px; height:30px; border-radius:50%; background:var(--panel-2); color:#fff; font-size:11px; font-weight:600; display:flex; align-items:center; justify-content:center; font-family:'JetBrains Mono',monospace; flex-shrink:0; margin-top:2px;}
-  .team-name{ font-weight:600; font-size:13.5px; width:120px; flex-shrink:0; outline:none; padding-top:5px;}
-  .team-role{ font-size:11.5px; color:#5f7a68; width:100px; flex-shrink:0; outline:none; font-family:'JetBrains Mono',monospace; padding-top:6px;}
-  .team-working{ flex:1; font-size:13px; color:#2b3c32; outline:none; }
+  .team-row-header{ display:flex; align-items:center; gap:12px; margin-bottom:8px; }
+  .avatar-lg{ width:30px; height:30px; border-radius:50%; background:var(--panel-2); color:#fff; font-size:11px; font-weight:600; display:flex; align-items:center; justify-content:center; font-family:'JetBrains Mono',monospace; flex-shrink:0;}
+  .team-name{ font-weight:600; font-size:13.5px; width:120px; flex-shrink:0; outline:none;}
+  .team-role{ font-size:11.5px; color:#5f7a68; flex:1; outline:none; font-family:'JetBrains Mono',monospace;}
+  .team-rm-btn{
+    opacity:0; cursor:pointer; color:#b9c6bd; font-size:16px; line-height:1; padding:3px 7px; border-radius:6px; flex-shrink:0;
+  }
+  .team-row:hover .team-rm-btn{ opacity:1; }
+  .team-rm-btn:hover{ color:#fff; background:var(--status-off); }
+  .team-working{ font-size:13px; color:#2b3c32; outline:none; padding-left:42px; }
 
   /* Task checklist per person */
   .task-list{ list-style:none; margin:0; padding:0; }
@@ -838,9 +844,10 @@ let applyingRemoteUpdate = false; // guards against re-broadcasting a change we 
 
 async function loadData(){
   try{
-    const { data: row, error } = await sb.from('boards').select('data').eq('id', BOARD_ROW_ID).single();
+    const { data: row, error } = await sb.from('boards').select('data, updated_at').eq('id', BOARD_ROW_ID).single();
     if(error) throw error;
     data = (row && row.data && Object.keys(row.data).length) ? row.data : JSON.parse(JSON.stringify(seed));
+    if(row) lastKnownUpdatedAt = row.updated_at;
   }catch(e){
     console.error('load failed', e);
     data = JSON.parse(JSON.stringify(seed));
@@ -967,9 +974,11 @@ async function persist(){
   if(applyingRemoteUpdate) return; // don't write back a change we just received from someone else
   const pill = document.getElementById('savePill');
   try{
-    const { error } = await sb.from('boards').update({ data, updated_at: new Date().toISOString() }).eq('id', BOARD_ROW_ID);
+    const nowIso = new Date().toISOString();
+    const { error } = await sb.from('boards').update({ data, updated_at: nowIso }).eq('id', BOARD_ROW_ID);
     if(error) throw error;
     persist._retryCount = 0;
+    lastKnownUpdatedAt = nowIso;
     lastSavedSnapshot = JSON.parse(JSON.stringify(data)); // new checkpoint now that this batch of edits is saved
     pill.className = 'save-pill show';
     pill.innerHTML = `<span class="accent-dot">●</span> Saved ${new Date().toLocaleTimeString([], {hour:'numeric', minute:'2-digit'})}`;
@@ -1019,19 +1028,48 @@ function doUndo(){
 
 // Live sync: when a teammate saves, pull their change in and re-render.
 let remoteChannel = null;
+let lastKnownUpdatedAt = null; // tracks the row's server-side updated_at so the polling fallback can detect missed changes
+let pollTimer = null;
+
 function subscribeToRemoteChanges(){
   if(remoteChannel) return;
   remoteChannel = sb.channel('boards-changes')
     .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'boards', filter: `id=eq.${BOARD_ROW_ID}` }, payload => {
       applyingRemoteUpdate = true;
       data = payload.new.data;
+      lastKnownUpdatedAt = payload.new.updated_at;
       lastSavedSnapshot = JSON.parse(JSON.stringify(data));
       undoStack = []; // a teammate's change landed — local undo history no longer applies cleanly, so reset it
       updateUndoButtonUI();
       render();
       applyingRemoteUpdate = false;
     })
-    .subscribe();
+    .subscribe(status => {
+      // Logged for diagnosing sync issues — check the browser console (F12) if edits aren't appearing live.
+      console.log('Realtime channel status:', status);
+    });
+
+  // Safety net: even if the live Realtime channel isn't connected (e.g. a network/proxy blocks
+  // websockets, or Realtime isn't enabled on the table in Supabase), poll every 20s so nobody
+  // waits more than that for someone else's edit to show up.
+  if(!pollTimer){
+    pollTimer = setInterval(async ()=>{
+      if(applyingRemoteUpdate || scheduleSave._t) return; // don't stomp on an edit in flight
+      try{
+        const { data: row, error } = await sb.from('boards').select('data, updated_at').eq('id', BOARD_ROW_ID).single();
+        if(error || !row) return;
+        if(lastKnownUpdatedAt && row.updated_at === lastKnownUpdatedAt) return; // nothing new
+        applyingRemoteUpdate = true;
+        data = row.data;
+        lastKnownUpdatedAt = row.updated_at;
+        lastSavedSnapshot = JSON.parse(JSON.stringify(data));
+        undoStack = [];
+        updateUndoButtonUI();
+        render();
+        applyingRemoteUpdate = false;
+      }catch(e){ console.error('poll sync failed', e); }
+    }, 20000);
+  }
 }
 
 // ---------- Auth flow ----------
@@ -2370,11 +2408,13 @@ function renderTeamSection(p){
     const row = document.createElement('div');
     row.className = 'team-row';
     row.innerHTML = `
-      <div class="avatar-lg" style="background:${personColor(t.name)}">${initials(t.name||'?')}</div>
-      <span class="team-name" contenteditable="true" data-ph="Name">${escapeHtml(t.name)}</span>
-      <span class="team-role" contenteditable="true" data-ph="Role">${escapeHtml(t.role||'')}</span>
+      <div class="team-row-header">
+        <div class="avatar-lg" style="background:${personColor(t.name)}">${initials(t.name||'?')}</div>
+        <span class="team-name" contenteditable="true" data-ph="Name">${escapeHtml(t.name)}</span>
+        <span class="team-role" contenteditable="true" data-ph="Role">${escapeHtml(t.role||'')}</span>
+        <span class="team-rm-btn" title="Remove ${escapeHtml(t.name||'this person')} and all their tasks">×</span>
+      </div>
       <div class="team-working"></div>
-      <span class="rm-btn">×</span>
     `;
     row.querySelector('.team-name').addEventListener('input', e=>{ t.name = e.target.textContent; scheduleSave(); renderSidebarOnly(); row.querySelector('.avatar-lg').style.background = personColor(t.name); });
     row.querySelector('.team-name').addEventListener('blur', e=>{
@@ -2385,7 +2425,16 @@ function renderTeamSection(p){
     });
     row.querySelector('.team-role').addEventListener('input', e=>{ t.role = e.target.textContent; scheduleSave(); });
     row.querySelector('.team-working').appendChild(renderTaskList(t, p, idx));
-    row.querySelector('.rm-btn').onclick = ()=>{ p.team.splice(idx,1); render(); scheduleSave(); };
+    row.querySelector('.team-rm-btn').onclick = ()=>{
+      const openTasks = (t.tasks||[]).filter(task=>!task.done).length;
+      const warning = openTasks > 0
+        ? `Remove ${t.name || 'this person'}? This deletes them and their ${openTasks} open task${openTasks===1?'':'s'} — this can't be undone from here.`
+        : `Remove ${t.name || 'this person'} from this project?`;
+      if(!confirm(warning)) return;
+      const realIdx = p.team.findIndex(x=>x===t);
+      if(realIdx > -1) p.team.splice(realIdx,1);
+      render(); scheduleSave();
+    };
     sec.appendChild(row);
   });
   const add = document.createElement('div');
