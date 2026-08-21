@@ -1035,6 +1035,10 @@ function subscribeToRemoteChanges(){
   if(remoteChannel) return;
   remoteChannel = sb.channel('boards-changes')
     .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'boards', filter: `id=eq.${BOARD_ROW_ID}` }, payload => {
+      // Supabase echoes our own saves back to us too, not just other people's — if this update's
+      // timestamp matches what we just wrote ourselves, it's our own echo, so skip the rebuild
+      // entirely (this is what was interrupting typing: a full re-render on every keystroke's save).
+      if(lastKnownUpdatedAt && payload.new.updated_at === lastKnownUpdatedAt) return;
       applyingRemoteUpdate = true;
       data = payload.new.data;
       lastKnownUpdatedAt = payload.new.updated_at;
