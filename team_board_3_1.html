@@ -532,6 +532,7 @@
   .spec-status.set{ background:var(--status-on-bg); color:var(--status-on); }
   .task-add{ font-size:11.5px; color:#8a9b90; cursor:pointer; padding:4px 0 0; }
   .task-add:hover{ color:var(--accent); }
+  .task-hidden-note{ font-size:11px; color:#b9c6bd; font-style:italic; padding:4px 0 0; }
 
   [contenteditable]:focus{ background: rgba(51,196,122,0.10); border-radius:4px; }
   [contenteditable]:empty:before{ content: attr(data-ph); color:#a9b8ae; }
@@ -2379,7 +2380,9 @@ function renderTaskList(t, p, selfIdx){
   const container = document.createElement('div');
   const ul = document.createElement('ul');
   ul.className = 'task-list';
-  t.tasks.forEach((task, tIdx)=>{
+  const hiddenCount = t.tasks.filter(task=> task.done && task.completedAt && !isWithinLastDays(task.completedAt, 14)).length;
+  const visibleTasks = t.tasks.filter(task=> !(task.done && task.completedAt && !isWithinLastDays(task.completedAt, 14)));
+  visibleTasks.forEach(task=>{
     const li = document.createElement('li');
     li.className = 'task-row';
     const isOverdue = task.date && !task.done && task.date < todayStr();
@@ -2421,7 +2424,9 @@ function renderTaskList(t, p, selfIdx){
       assigneeEl.addEventListener('change', e=>{
         const targetIdx = parseInt(e.target.value, 10);
         if(targetIdx === selfIdx) return;
-        const [moved] = t.tasks.splice(tIdx, 1);
+        const realIdx = t.tasks.findIndex(x=>x===task);
+        if(realIdx === -1) return;
+        const [moved] = t.tasks.splice(realIdx, 1);
         if(!Array.isArray(p.team[targetIdx].tasks)) p.team[targetIdx].tasks = [];
         p.team[targetIdx].tasks.push(moved);
         render(); scheduleSave();
@@ -2432,10 +2437,20 @@ function renderTaskList(t, p, selfIdx){
     recurToggle.addEventListener('click', flipRecurring);
     const recurLabel = li.querySelector('.task-recur-label');
     if(recurLabel) recurLabel.addEventListener('click', flipRecurring);
-    li.querySelector('.task-rm').onclick = ()=>{ t.tasks.splice(tIdx,1); render(); scheduleSave(); };
+    li.querySelector('.task-rm').onclick = ()=>{
+      const realIdx = t.tasks.findIndex(x=>x===task);
+      if(realIdx > -1) t.tasks.splice(realIdx,1);
+      render(); scheduleSave();
+    };
     ul.appendChild(li);
   });
   container.appendChild(ul);
+  if(hiddenCount > 0){
+    const hiddenNote = document.createElement('div');
+    hiddenNote.className = 'task-hidden-note';
+    hiddenNote.textContent = `${hiddenCount} completed task${hiddenCount===1?'':'s'} hidden (done more than 2 weeks ago)`;
+    container.appendChild(hiddenNote);
+  }
   const add = document.createElement('div');
   add.className = 'task-add';
   add.textContent = '+ add task';
