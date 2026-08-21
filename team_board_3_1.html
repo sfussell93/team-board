@@ -1035,10 +1035,13 @@ function subscribeToRemoteChanges(){
   if(remoteChannel) return;
   remoteChannel = sb.channel('boards-changes')
     .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'boards', filter: `id=eq.${BOARD_ROW_ID}` }, payload => {
-      // Supabase echoes our own saves back to us too, not just other people's — if this update's
-      // timestamp matches what we just wrote ourselves, it's our own echo, so skip the rebuild
-      // entirely (this is what was interrupting typing: a full re-render on every keystroke's save).
-      if(lastKnownUpdatedAt && payload.new.updated_at === lastKnownUpdatedAt) return;
+      // Supabase echoes our own saves back to us too, not just other people's. Comparing the actual
+      // saved content (not the timestamp string — Postgres/JS format timestamps differently, so that
+      // comparison silently never matched) tells us reliably whether this is our own echo.
+      if(lastSavedSnapshot && JSON.stringify(payload.new.data) === JSON.stringify(lastSavedSnapshot)) {
+        lastKnownUpdatedAt = payload.new.updated_at;
+        return;
+      }
       applyingRemoteUpdate = true;
       data = payload.new.data;
       lastKnownUpdatedAt = payload.new.updated_at;
@@ -1062,7 +1065,7 @@ function subscribeToRemoteChanges(){
       try{
         const { data: row, error } = await sb.from('boards').select('data, updated_at').eq('id', BOARD_ROW_ID).single();
         if(error || !row) return;
-        if(lastKnownUpdatedAt && row.updated_at === lastKnownUpdatedAt) return; // nothing new
+        if(lastSavedSnapshot && JSON.stringify(row.data) === JSON.stringify(lastSavedSnapshot)) return; // nothing new
         applyingRemoteUpdate = true;
         data = row.data;
         lastKnownUpdatedAt = row.updated_at;
