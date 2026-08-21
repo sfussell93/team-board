@@ -560,10 +560,15 @@
   .save-pill{
     position:fixed; bottom:18px; right:18px; background:var(--panel); color:var(--text-lo);
     font-family:'JetBrains Mono',monospace; font-size:11px; padding:8px 14px; border-radius:20px;
-    border:1px solid var(--line); opacity:0; transition:opacity .3s; pointer-events:none;
+    border:1px solid var(--line); opacity:0; transition:opacity .3s; pointer-events:none; max-width:340px; z-index:60;
   }
   .save-pill.show{ opacity:1; }
   .save-pill .accent-dot{ color:var(--accent); }
+  .save-pill.error{
+    background:var(--status-off-bg); color:var(--status-off); border-color:transparent; border-radius:10px;
+    line-height:1.5; pointer-events:auto;
+  }
+  .save-pill.error .accent-dot{ color:var(--status-off); }
 
   /* ---------- Login ---------- */
   .login-screen{
@@ -964,11 +969,26 @@ async function persist(){
   try{
     const { error } = await sb.from('boards').update({ data, updated_at: new Date().toISOString() }).eq('id', BOARD_ROW_ID);
     if(error) throw error;
+    persist._retryCount = 0;
     lastSavedSnapshot = JSON.parse(JSON.stringify(data)); // new checkpoint now that this batch of edits is saved
-    pill.classList.add('show');
+    pill.className = 'save-pill show';
+    pill.innerHTML = `<span class="accent-dot">●</span> Saved ${new Date().toLocaleTimeString([], {hour:'numeric', minute:'2-digit'})}`;
+    pill.onclick = null;
     clearTimeout(saveTimer);
-    saveTimer = setTimeout(()=> pill.classList.remove('show'), 1200);
-  }catch(e){ console.error('save failed', e); }
+    saveTimer = setTimeout(()=> pill.classList.remove('show'), 2500);
+  }catch(e){
+    console.error('save failed', e);
+    persist._retryCount = (persist._retryCount || 0) + 1;
+    const gaveUp = persist._retryCount > 4;
+    pill.className = 'save-pill show error';
+    pill.innerHTML = `<span class="accent-dot">●</span> ${gaveUp ? 'Still failing to save — check your connection, then click to retry.' : 'Save failed — click to retry, or copy your edit somewhere safe.'}`;
+    pill.onclick = ()=> { persist._retryCount = 0; persist(); };
+    // Don't auto-hide an error — it should stay visible until it either succeeds or the person notices.
+    clearTimeout(persist._retryTimer);
+    if(!gaveUp){
+      persist._retryTimer = setTimeout(()=> persist(), 6000); // a few automatic retries in case it was a brief network blip
+    }
+  }
 }
 function scheduleSave(){
   if(!scheduleSave._t && lastSavedSnapshot){
