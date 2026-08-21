@@ -973,13 +973,17 @@ async function loadData(){
 async function persist(){
   if(applyingRemoteUpdate) return; // don't write back a change we just received from someone else
   const pill = document.getElementById('savePill');
+  const nowIso = new Date().toISOString();
+  // Mark this as "our own save" before the request even goes out — the realtime echo can arrive
+  // over the already-open websocket faster than this same request's HTTP response comes back, so
+  // setting this only after awaiting left a gap where our own echo looked like a remote change.
+  const outgoingSnapshot = JSON.parse(JSON.stringify(data));
+  lastSavedSnapshot = outgoingSnapshot;
+  lastKnownUpdatedAt = nowIso;
   try{
-    const nowIso = new Date().toISOString();
-    const { error } = await sb.from('boards').update({ data, updated_at: nowIso }).eq('id', BOARD_ROW_ID);
+    const { error } = await sb.from('boards').update({ data: outgoingSnapshot, updated_at: nowIso }).eq('id', BOARD_ROW_ID);
     if(error) throw error;
     persist._retryCount = 0;
-    lastKnownUpdatedAt = nowIso;
-    lastSavedSnapshot = JSON.parse(JSON.stringify(data)); // new checkpoint now that this batch of edits is saved
     pill.className = 'save-pill show';
     pill.innerHTML = `<span class="accent-dot">●</span> Saved ${new Date().toLocaleTimeString([], {hour:'numeric', minute:'2-digit'})}`;
     pill.onclick = null;
