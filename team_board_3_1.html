@@ -847,7 +847,7 @@ async function loadData(){
     const { data: row, error } = await sb.from('boards').select('data, updated_at').eq('id', BOARD_ROW_ID).single();
     if(error) throw error;
     data = (row && row.data && Object.keys(row.data).length) ? row.data : JSON.parse(JSON.stringify(seed));
-    if(row) lastKnownUpdatedAt = row.updated_at;
+    if(row) syncBaselineTime = row.updated_at;
   }catch(e){
     console.error('load failed', e);
     data = JSON.parse(JSON.stringify(seed));
@@ -979,7 +979,7 @@ async function persist(){
   // setting this only after awaiting left a gap where our own echo looked like a remote change.
   const outgoingSnapshot = JSON.parse(JSON.stringify(data));
   lastSavedSnapshot = outgoingSnapshot;
-  lastKnownUpdatedAt = nowIso;
+  if(!syncBaselineTime || nowIso > syncBaselineTime) syncBaselineTime = nowIso;
   try{
     const { error } = await sb.from('boards').update({ data: outgoingSnapshot, updated_at: nowIso }).eq('id', BOARD_ROW_ID);
     if(error) throw error;
@@ -1032,23 +1032,26 @@ function doUndo(){
 
 // Live sync: when a teammate saves, pull their change in and re-render.
 let remoteChannel = null;
-let lastKnownUpdatedAt = null; // tracks the row's server-side updated_at so the polling fallback can detect missed changes
+// The latest timestamp we've either sent ourselves or already applied. Anything at or before this,
+// however it arrives and in whatever order, is guaranteed to be something we already have — so it's
+// safe to ignore rather than risk an old, out-of-order echo overwriting a newer local edit.
+let syncBaselineTime = null;
 let pollTimer = null;
 
 function subscribeToRemoteChanges(){
   if(remoteChannel) return;
   remoteChannel = sb.channel('boards-changes')
     .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'boards', filter: `id=eq.${BOARD_ROW_ID}` }, payload => {
-      // Supabase echoes our own saves back to us too, not just other people's. Comparing the actual
-      // saved content (not the timestamp string — Postgres/JS format timestamps differently, so that
-      // comparison silently never matched) tells us reliably whether this is our own echo.
-      if(lastSavedSnapshot && JSON.stringify(payload.new.data) === JSON.stringify(lastSavedSnapshot)) {
-        lastKnownUpdatedAt = payload.new.updated_at;
-        return;
-      }
+      // Compare as real timestamps, not text (Postgres and JS format them differently) and by "is this
+      // newer than anything we've already sent or applied" rather than exact match — this is what
+      // protects against an older save's echo arriving late (e.g. after a quick follow-up edit) and
+      // being mistaken for a fresh remote change, which briefly reverted a click back to its old state.
+      const incoming = new Date(payload.new.updated_at).getTime();
+      const baseline = syncBaselineTime ? new Date(syncBaselineTime).getTime() : -Infinity;
+      if(incoming <= baseline) return; // our own current or stale echo — nothing to do
       applyingRemoteUpdate = true;
       data = payload.new.data;
-      lastKnownUpdatedAt = payload.new.updated_at;
+      syncBaselineTime = payload.new.updated_at;
       lastSavedSnapshot = JSON.parse(JSON.stringify(data));
       undoStack = []; // a teammate's change landed — local undo history no longer applies cleanly, so reset it
       updateUndoButtonUI();
@@ -1069,10 +1072,12 @@ function subscribeToRemoteChanges(){
       try{
         const { data: row, error } = await sb.from('boards').select('data, updated_at').eq('id', BOARD_ROW_ID).single();
         if(error || !row) return;
-        if(lastSavedSnapshot && JSON.stringify(row.data) === JSON.stringify(lastSavedSnapshot)) return; // nothing new
+        const incoming = new Date(row.updated_at).getTime();
+        const baseline = syncBaselineTime ? new Date(syncBaselineTime).getTime() : -Infinity;
+        if(incoming <= baseline) return; // nothing newer than what we've already sent or applied
         applyingRemoteUpdate = true;
         data = row.data;
-        lastKnownUpdatedAt = row.updated_at;
+        syncBaselineTime = row.updated_at;
         lastSavedSnapshot = JSON.parse(JSON.stringify(data));
         undoStack = [];
         updateUndoButtonUI();
